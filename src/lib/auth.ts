@@ -27,7 +27,7 @@ providers.push(
       if (!user?.passwordHash) return null;
       const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
       if (!ok) return null;
-      return { id: user.id, email: user.email, name: user.username };
+      return { id: user.id, email: user.email, name: user.username, role: user.role };
     },
   })
 );
@@ -37,4 +37,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
   trustHost: true,
   providers,
+  callbacks: {
+    // Le rôle voyage dans le jeton de session : sans cela, le contrôle ADMIN du middleware échoue toujours.
+    jwt({ token, user }) {
+      if (user) token.role = (user as { role?: string }).role ?? "USER";
+      return token;
+    },
+    session({ session, token }) {
+      if (session.user) (session.user as { role?: string }).role = token.role as string | undefined;
+      return session;
+    },
+  },
 });

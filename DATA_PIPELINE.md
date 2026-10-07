@@ -1,17 +1,25 @@
-# DATA_PIPELINE
+# Données du catalogue
 
-## Sources autorisées
+## État actuel
 
-APIs officielles et flux marchands/constructeurs uniquement. **Interdit** : scraping agressif, contournement robots.txt/CGU. Chaque source = 1 connecteur (`sources/<nom>.ts` à créer) avec `{ fetch(), normalize(), provenance }`.
+`src/data/catalog/` : une catégorie par fichier, un tableau de lignes par fichier. Relevé du 7 octobre 2026 (`PRICE_DATE` dans `index.ts`).
 
-## Formats d'entrée
+- **Prix** : plus bas constatés sur des comparateurs et revendeurs français. Indicatifs.
+- **Caractéristiques** : `confidence: "VERIFIED"` quand dimensions et connecteurs ont été relus sur la fiche du fabricant ou d'un revendeur ; `"KNOWN"` sinon.
+- Quand un nombre de connecteurs n'a pas été relu, il est compté au plus bas : une alerte en trop vaut mieux qu'une compatibilité annoncée à tort.
 
-`POST /api/admin/import` : JSON (actif) · CSV/XML (normaliser vers le même schéma avant envoi). `dryRun:true` par défaut → rapport de validation sans écriture. Jobs d'actualisation (prix, stock, benchmarks, images) : cron externe → import ; `DATA_INGEST_ENABLED`/`DATA_INGEST_CRON` en env.
+## Ajouter une pièce
 
-## Provenance
+Ajouter une ligne dans le fichier de la catégorie, puis lancer `npm test` : les tests d'intégrité vérifient les identifiants, les prix et qu'aucune pièce n'est orpheline.
 
-Tout item importé : `source=<connecteur>`, `confidence` (MEDIUM par défaut, HIGH si flux officiel signé, VERIFIED_MANUFACTURER si fiche constructeur). Le seed `DEMO_SEED/LOW` est remplacé progressivement, jamais mélangé sans marquage.
+## Images des pièces
 
-## Seed actuel
+Chaque pièce a une image tirée du rendu 3D du site, rangée dans une planche par catégorie (`public/parts/`). Après avoir ajouté ou modifié des pièces, `npm run vignettes` les régénère (voir l'en-tête de `scripts/vignettes.mjs`).
 
-`src/lib/demo-data.ts` : 25 composants cohérents (AM5/AM4/LGA1700, DDR4/DDR5, 4 GPU, 3 boîtiers…) + prix démo + table FPS démo. Suffisant pour démo, tests moteur et dev offline. Données réelles : documenter chaque import (licence + date) dans `prisma/seed.ts`.
+Pour afficher une **photo officielle** à la place, renseigner le champ `photo` de la pièce avec l'adresse de l'image. N'y mettre que des images que l'on a le droit d'afficher : celles fournies par l'API d'un programme d'affiliation, ou un kit presse dont la licence le permet. Les photos copiées sur le site d'une marque ou d'un marchand ne sont pas libres de droits.
+
+## Passer à des prix automatiques
+
+Le relevé manuel ne tient pas dans le temps. La suite prévue : un flux produits d'un programme d'affiliation, importé par une tâche planifiée. `src/lib/catalog.ts` est le seul point d'accès aux données : c'est lui qu'il faudra brancher.
+
+Les conditions du Programme Partenaires Amazon encadrent l'affichage de leurs prix : n'afficher un prix Amazon que s'il vient de leur API officielle.

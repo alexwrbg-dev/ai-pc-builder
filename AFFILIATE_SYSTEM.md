@@ -1,17 +1,19 @@
-# AFFILIATE_SYSTEM
+# Liens d'achat et affiliation
 
-## Principe absolu
+`src/lib/affiliate.ts`
 
-**Aucun lien affilié inventé.** `affiliateUrl()` (`src/lib/pricing.ts`) retourne `null` tant qu'aucun marchand n'est configuré → l'UI affiche le nom + « lien non configuré ». État actuel : **0 marchand actif, 0 lien généré**.
+- Chaque pièce a un lien Amazon.fr : fiche directe si le champ `asin` est renseigné, recherche sur la marque et le modèle sinon.
+- `NEXT_PUBLIC_AMAZON_TAG` vide : simples liens, aucune commission.
+- `NEXT_PUBLIC_AMAZON_TAG="monsite-21"` : l'identifiant est ajouté à chaque lien, et la mention obligatoire « En tant que Partenaire Amazon, je réalise un bénéfice sur les achats remplissant les conditions requises. » s'affiche en pied de page et sur `/affiliate-disclosure`.
+- Les liens portent `rel="sponsored nofollow"`.
 
-## Configuration (prod)
+## Mettre en place l'affiliation
 
-1. Table `Merchant` : `{ name, baseUrl, network, trackingTpl, active, priority, commission }` (ou `AFFILIATE_MERCHANTS` en env).
-2. Seuls `active=true` génèrent des URLs (via redirect interne `/api/go` recommandé pour le tracking de clics + `AnalyticsEvent merchant_click`).
-3. Emplacements : ACHETER / VOIR LE MEILLEUR PRIX / COMPAREZ LES OFFRES.
+1. Créer un compte sur le Programme Partenaires Amazon (partenaires.amazon.fr) avec l'adresse du site.
+2. Copier l'identifiant (il finit par `-21`) dans `.env`.
+3. Redémarrer le site.
+4. Lire les conditions du programme, en particulier sur l'affichage des prix et les mentions obligatoires.
 
-## Transparence
+## Passer aux liens directs
 
-- Page `/affiliate-disclosure` + bandeau global + `disclosure` dans `GET /api/merchants`.
-- Placements sponsorisés futurs : **clairement identifiés**, jamais présentés comme recommandations indépendantes ; le tri « meilleur prix » reste indépendant des commissions (priorité = prix, pas commission).
-- Monétisation phase 2 (sponsorisé identifié, premium) : architecture prête, produit 100% utilisable sans paiement au lancement.
+Renseigner `asin` sur une pièce dans `src/data/catalog/` (dix caractères, visibles dans l'adresse de la fiche Amazon après `/dp/`).

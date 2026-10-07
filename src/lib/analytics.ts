@@ -1,5 +1,5 @@
 // Analytics minimaliste, respectueux (aucun tracker tiers, aucun PII).
-// Événements agrégés en DB (AnalyticsEvent) ou console en mode démo.
+// Les événements sont seulement écrits dans la console du serveur pour l'instant.
 export type AnalyticsName =
   | "build_created" | "build_completed" | "merchant_click"
   | "search" | "recommend" | "configurator_abandon";

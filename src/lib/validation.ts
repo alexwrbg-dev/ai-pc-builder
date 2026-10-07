@@ -1,31 +1,28 @@
 import { z } from "zod";
 
+const id = z.string().min(1).max(80).optional();
+
 export const BuildSelectionSchema = z.object({
-  CPU: z.string().optional(), GPU: z.string().optional(),
-  MOTHERBOARD: z.string().optional(), RAM: z.string().optional(),
-  SSD_NVME: z.string().optional(), PSU: z.string().optional(),
-  CASE: z.string().optional(), CPU_COOLER: z.string().optional(),
-  AIO: z.string().optional(),
+  CPU: id, GPU: id, MOTHERBOARD: id, RAM: id, SSD: id, PSU: id, CASE: id, COOLER: id,
 }).strict();
 
-export const RecommendSchema = z.object({
-  prompt: z.string().min(3).max(2000),
-  variant: z.enum(["value", "balanced", "max", "all"]).default("all"),
+export const RequirementsSchema = z.object({
+  budget: z.number().int().min(100).max(50000).nullable(),
+  usage: z.enum(["gaming", "creation", "streaming", "bureautique"]),
+  resolution: z.enum(["1080p", "1440p", "4K"]).nullable(),
+  games: z.array(z.string().max(40)).max(12),
+  white: z.boolean(),
+  rgb: z.boolean().nullable(),
+  silent: z.boolean(),
+  compact: z.boolean(),
+  wifi: z.boolean(),
+  cpuBrand: z.enum(["AMD", "Intel"]).nullable(),
+  gpuBrand: z.enum(["NVIDIA", "AMD", "Intel"]).nullable(),
+  storageGB: z.number().int().min(100).max(16000).nullable(),
 });
 
-export const ChatSchema = z.object({
-  message: z.string().min(1).max(2000),
-  selection: BuildSelectionSchema.optional(),
-  history: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string() })).max(20).optional(),
-});
-
-export const PriceAlertSchema = z.object({
-  componentId: z.string().optional(),
-  buildId: z.string().optional(),
-  targetPrice: z.number().positive(),
-  email: z.string().email().optional(),
-});
-
-export function rateLimitNote(): string {
-  return "Rate limiting: 60 req/min/IP sur /api/ai/* (middleware prod, voir SECURITY.md).";
-}
+/** Une demande écrite, ou des besoins déjà structurés. */
+export const RecommendSchema = z.union([
+  z.object({ prompt: z.string().min(3).max(2000) }).strict(),
+  z.object({ requirements: RequirementsSchema }).strict(),
+]);

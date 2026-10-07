@@ -1,14 +1,19 @@
-export const metadata = { title: "Transparence affiliation" };
+import { AMAZON_DISCLOSURE, AMAZON_TAG } from "@/lib/affiliate";
+
+export const metadata = { title: "Affiliation" };
+
 export default function Page() {
   return (
-    <div>
-      <h1>Transparence affiliation</h1>
-      <div className="card">
-        <p>Certains liens vers les marchands peuvent générer une commission pour le site, <strong>sans surcoût pour vous</strong>.</p>
-        <p>Les recommandations restent indépendantes des commissions. Les placements sponsorisés, s&apos;ils existent un jour, seront <strong>clairement identifiés</strong> et jamais présentés comme des recommandations indépendantes.</p>
-        <p><strong>État actuel :</strong> aucun marchand affilié configuré — aucun lien affilié n&apos;est généré. Les prix affichés sont des <strong>données de démonstration</strong>.</p>
-        <p>Configuration : variable <code>AFFILIATE_MERCHANTS</code> + table <code>Merchant</code> (voir AFFILIATE_SYSTEM.md).</p>
+    <>
+      <div className="page-head"><span className="label"><b>Transparence</b></span><h2>Liens d&apos;achat et affiliation</h2></div>
+      <div className="prose">
+        <p>Chaque pièce est accompagnée d&apos;un lien vers Amazon.fr. Ces liens servent à trouver le produit : le site n&apos;affiche pas les prix d&apos;Amazon, seulement des prix indicatifs relevés séparément.</p>
+        <p><strong>État actuel :</strong> {AMAZON_TAG
+          ? "les liens portent un identifiant d'affiliation. Un achat fait après avoir suivi un lien peut rapporter une commission au site, sans surcoût pour toi."
+          : "aucun identifiant d'affiliation n'est configuré. Les liens sont de simples liens, sans commission."}</p>
+        {AMAZON_TAG && <p>{AMAZON_DISCLOSURE}</p>}
+        <p>Les configurations proposées sont calculées par l&apos;optimiseur à partir des caractéristiques et des prix. Aucune commission n&apos;entre dans ce calcul.</p>
       </div>
-    </div>
+    </>
   );
 }

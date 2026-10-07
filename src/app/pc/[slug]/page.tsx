@@ -1,29 +1,64 @@
+import { notFound } from "next/navigation";
+import { BudgetMeter, FpsBars, PartsTable, StatusPill } from "@/components/ui";
+import { PRICE_DATE, encodeSelection, resolveBuild } from "@/lib/catalog";
+import { GUIDES } from "@/lib/guides";
+import { PROFILE_INFO, recommendAll } from "@/lib/optimizer";
+import { formatEUR } from "@/lib/pricing";
+
 export function generateStaticParams() {
-  return [{ slug: "pc-gamer-1000-euros" }, { slug: "pc-gamer-1500-euros" }, { slug: "pc-gamer-2000-euros" }, { slug: "pc-1440p" }, { slug: "pc-4k" }];
+  return GUIDES.map((g) => ({ slug: g.slug }));
 }
 
-const GUIDES: Record<string, { title: string; body: string; budget: string }> = {
-  "pc-gamer-1000-euros": { title: "PC gamer ~1000 € : 1440p équilibré", budget: "1000", body: "Cible 1440p : Ryzen 5 7600 + RX 7800 XT + 32GB DDR5 + 1TB NVMe. Vérifié moteur. Prix démo." },
-  "pc-gamer-1500-euros": { title: "PC gamer ~1500 € : 1440p haut de gamme", budget: "1500", body: "7800X3D + RTX 4070 SUPER + 32GB DDR5-6000. Le sweet spot 1440p/144Hz. Prix démo." },
-  "pc-gamer-2000-euros": { title: "PC gamer ~2000 € : 4K d'entrée", budget: "2000", body: "7800X3D + 7900 XTX/4080 SUPER + 850W ATX 3.0. Prix démo." },
-  "pc-1440p": { title: "PC 1440p : le guide", budget: "1300", body: "La 1440p demande 12GB+ de VRAM en 2026. Visez 4070 SUPER / 7800 XT minimum." },
-  "pc-4k": { title: "PC 4K : le guide", budget: "2500", body: "La 4K exige 16GB+ VRAM et 850W+. RTX 4090 / 7900 XTX. Estimations FPS marquées." },
-};
-
-export async function generateMetadata({ params }: { params: { slug: string } }) {
-  const g = GUIDES[params.slug];
-  return { title: g ? g.title : "Guide PC" };
+export function generateMetadata({ params }: { params: { slug: string } }) {
+  const g = GUIDES.find((x) => x.slug === params.slug);
+  return g ? { title: g.title, description: g.intro } : { title: "Guide introuvable" };
 }
 
 export default function Page({ params }: { params: { slug: string } }) {
-  const g = GUIDES[params.slug];
-  if (!g) return <div><h1>Guide introuvable</h1><a href="/pc">Retour aux guides</a></div>;
+  const guide = GUIDES.find((g) => g.slug === params.slug);
+  if (!guide) notFound();
+  const builds = recommendAll(guide.requirements);
   return (
-    <div>
-      <h1>{g.title}</h1>
-      <p>{g.body}</p>
-      <p><a className="btn" href={`/?q=${encodeURIComponent(`PC à ${g.budget} € gaming`)}`}>Générer cette config avec l&apos;IA</a></p>
-      <p style={{ fontSize: 13, color: "#93a0c4" }}>Page éditoriale à valeur ajoutée (pas de contenu dupliqué auto-généré). Données prix : démo.</p>
-    </div>
+    <>
+      <div className="page-head">
+        <span className="label"><b>Guide</b> — {guide.kicker}</span>
+        <h2>{guide.title}</h2>
+        <p className="lede">{guide.intro}</p>
+        <p className="small muted">Configurations calculées aux prix relevés le {new Date(PRICE_DATE).toLocaleDateString("fr-FR")}.</p>
+        <div><a className="btn" href={`/?q=${encodeURIComponent(guide.prompt)}`}>Adapter à mon besoin <span className="arrow" aria-hidden="true">→</span></a></div>
+      </div>
+      <div className="stack" style={{ gap: 24 }}>
+        {builds.map((b, k) => {
+          const { build } = resolveBuild(b.selection);
+          return (
+            <article key={b.profile} className="sheet stack">
+              <div className="sheet-head" style={{ marginBottom: 0 }}>
+                <span className="label"><b>{String.fromCharCode(65 + k)}</b> — {PROFILE_INFO[b.profile].title}</span>
+                <StatusPill status={b.compat.status} />
+              </div>
+              <div className="profile-top">
+                <span className="price">{formatEUR(b.total)}</span>
+                <a className="btn-ghost btn-sm" href={`/builder?c=${encodeURIComponent(encodeSelection(b.selection))}`}>Voir en 3D et modifier →</a>
+              </div>
+              <BudgetMeter total={b.total} budget={b.budget} />
+              <p className="muted">{PROFILE_INFO[b.profile].tagline}</p>
+              <div className="grid2">
+                <PartsTable build={build} total={b.total} />
+                <div className="stack">
+                  <ul className="notes">{b.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                  {b.fps.length > 0 && (
+                    <>
+                      <span className="label">Images par seconde estimées — {b.resolution}</span>
+                      <FpsBars fps={b.fps} />
+                      <span className="small muted">Estimation, pas une mesure.</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </>
   );
 }

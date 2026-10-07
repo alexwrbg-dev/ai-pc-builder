@@ -1,25 +1,22 @@
-export const metadata = { title: "Admin — tableau de bord" };
-// Protégé par RBAC en prod (middleware + role ADMIN). Ici : UI + endpoints prêts, données démo.
-const STATS = [
-  ["Utilisateurs", "— (brancher Prisma)"], ["Builds publiés", "—"],
-  ["Clics affiliés", "0 (aucun marchand actif)"], ["Revenus estimés", "0 €"],
-  ["Recherches populaires", "1440p, 1500€, silencieux (démo)"], ["Usage API IA", "heuristic: 100% offline"],
-];
+import { CATALOG, PRICE_DATE } from "@/lib/catalog";
+import { CATEGORIES, CATEGORY_LABEL } from "@/lib/types";
+
+export const metadata = { title: "Administration", robots: { index: false } };
+
+// Accès réservé au rôle ADMIN (voir src/middleware.ts). Lecture seule pour l'instant.
 export default function Page() {
   return (
-    <div>
-      <h1>Admin <span className="pill-err">RBAC requis en prod</span></h1>
+    <>
+      <div className="page-head"><span className="label"><b>Administration</b></span><h2>État du catalogue</h2></div>
       <div className="grid3">
-        {STATS.map(([k, v]) => <div key={k} className="card"><h3>{k}</h3><p>{v}</p></div>)}
+        {CATEGORIES.map((c) => (
+          <div key={c} className="sheet step">
+            <span className="label">{CATEGORY_LABEL[c]}</span>
+            <span className="price">{CATALOG.filter((x) => x.category === c).length}</span>
+          </div>
+        ))}
+        <div className="sheet step"><span className="label">Relevé des prix</span><span className="price">{new Date(PRICE_DATE).toLocaleDateString("fr-FR")}</span></div>
       </div>
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2>Gestion</h2>
-        <ul>
-          <li>Composants : import JSON/CSV/XML via <code>POST /api/admin/import</code> (à brancher, voir DATA_PIPELINE.md)</li>
-          <li>Marchands / prix / benchmarks / signalements / utilisateurs</li>
-          <li>Modération : signalements + règles déterministes + modération IA optionnelle</li>
-        </ul>
-      </div>
-    </div>
+    </>
   );
 }

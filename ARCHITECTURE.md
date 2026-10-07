@@ -1,33 +1,54 @@
-# ARCHITECTURE
+# Architecture
 
-## Choix stack (arbitrage fiabilité / simplicité / coût / perf / sécu / maintenabilité)
+Un seul projet Next.js 14 (App Router) en TypeScript strict : pages, API et logique au même endroit.
 
-| Besoin | Choix | Pourquoi (vs alternatives) |
-|---|---|---|
-| Frontend+Backend+SEO | **Next.js 14 App Router (monolithe modulaire)** | SSR/SSG natif (SEO prioritaire), API Routes colocalisées, 1 déploiement, 0 sync front/back. Rejeté : SPA + API séparée (2 déploiements, SEO plus faible). |
-| Langage | **TypeScript strict** | Typage specs/moteur = garde-fous. Zod en validation runtime aux frontières. |
-| Style | **Tailwind** | Design system utilitaire, petit bundle (purge), responsive simple. |
-| DB prod | **PostgreSQL + Prisma** | Relationnel normalisé (composants, builds, prix, users), indexes, migrations. Rejeté : Mongo (relations prix/historique moins propres). |
-| Sans DB | **Dataset DEMO in-memory** (`demo-data.ts`) | L'app fonctionne sans infra (démo, tests, CI). Même interfaces TypeScript → bascule Postgres sans changer l'UI. |
-| Auth | **NextAuth v5 (Auth.js), JWT** | Credentials bcrypt + OAuth conditionnels, RBAC `role` (USER/MODERATOR/ADMIN). Secrets en env uniquement. |
-| 3D | **Three.js + React Three Fiber, lazy + Suspense** | `next/dynamic` implicite via `React.lazy` : le chunk 3D (~500Ko) ne charge que sur `/builder`. Modèles **génériques étiquetés** (`Viewer3D.tsx`), jamais présentés comme officiels. |
-| Cache | **Redis optionnel** (`REDIS_URL`, profil `cache` docker-compose) | Prix/sessions. Non requis en MVP. |
-| Tests | **Vitest** | Moteur déterministe testé sans DOM (9 cas adverses). |
+## Chaîne de traitement
+
+```
+demande écrite → requirements.ts → optimizer.ts → compatibility.ts → perf.ts → interface
+                 (besoins)         (candidats)    (verdict)          (estimation)
+```
+
+Aucune IA générative dans cette chaîne. Un modèle de langage peut, en option, rédiger une explication à partir des faits déjà calculés (`ai-orchestrator.ts`, variable `AI_PROVIDER`).
 
 ## Modules (`src/lib`)
 
-`types` → `demo-data` → `compatibility` (vérité) → `scoring`/`pricing` → `ai-orchestrator` (lit les précédents, ne les contourne pas) → `validation` (zod) → `auth`/`moderation`/`notifications`/`analytics`/`seo`.
+| Fichier | Rôle |
+|---|---|
+| `types.ts` | Types des pièces et des résultats |
+| `catalog.ts` | Accès au catalogue, liens de partage |
+| `compatibility.ts` | Moteur de règles, fonction pure |
+| `requirements.ts` | Lecture d'une demande en français |
+| `optimizer.ts` | Recherche de la meilleure configuration sous un budget |
+| `perf.ts` | Estimation des images par seconde |
+| `layout3d.ts` | Position de chaque pièce dans le boîtier, en millimètres |
+| `pricing.ts`, `affiliate.ts` | Totaux et liens d'achat |
 
-## Scalabilité (centaines → dizaines de milliers de composants)
+Le moteur, l'optimiseur et la mise en place 3D sont des fonctions pures, testées sans navigateur.
 
-- Specs JSON validées + colonnes requêtables (catégorie, marque) + indexes (`schema.prisma`).
-- Listes : pagination API (`?category&?q`), virtualisation prévue côté client.
-- Prix : table `Price` + `PriceHistory` (timeseries), jobs d'ingestion découplés (`DATA_PIPELINE.md`).
-- 3D : registre de modèles par `slug` → passage à l'échelle sans toucher au viewer (voir `AI_SYSTEM.md` §3D).
-- Extensibilité : `ComponentCategory` inclut déjà OS/écrans/périphériques ; laptops/NAS/serveurs = nouvelles catégories + règles moteur (voir §40 du cahier des charges : non développés, architecture prête).
+## Vue 3D
 
-## Performance
+Three.js via React Three Fiber, chargée à la demande (`next/dynamic`, sans rendu serveur). `layout3d.ts` calcule, `components/viewer/` dessine. Le plateau de carte mère est placé d'après la hauteur de ventirad annoncée par le fabricant du boîtier : ce qui dépasse dans le dessin dépasse en vrai.
 
-- First Load JS partagé : **87 Ko** (build vérifié). 3D hors bundle initial.
-- SEO : pages statiques (`/pc/[slug]` pré-rendues), `sitemap.ts`/`robots.ts`, JSON-LD, metadata/OG par page.
-- Headers sécu dans `next.config.mjs`. Rate limiting : à poser au reverse-proxy/middleware prod (noté dans `SECURITY.md` + `validation.ts`).
+| Fichier | Rôle |
+|---|---|
+| `Scene.tsx` | Configuration entière : caméra, éclairage de studio, ombres, halo, cotes |
+| `PartScene.tsx` | Une pièce seule (fiche produit, vignettes) |
+| `partsPlan.tsx` | Modèles simples du style « plan » |
+| `partsReal.tsx` | Modèles détaillés du style « rendu » |
+| `real.tsx` | Matières, textures calculées, ventilateur, ailettes, câbles |
+
+Deux niveaux de qualité : « haut » (ombres, occlusion ambiante, halo) et « bas » pour les petits écrans et les machines modestes. `?rendu=haut` ou `?rendu=bas` dans l'adresse force le choix.
+
+Aucune image ni modèle externe : textures et formes sont calculées dans le navigateur. Les modèles sont génériques, ils ne copient pas le dessin des produits.
+
+## Données
+
+Le catalogue est embarqué dans le code (`src/data/catalog`). `catalog.ts` est le seul point d'accès : le jour où les pièces viennent d'une base ou d'un flux, lui seul change.
+
+Prisma et PostgreSQL ne servent aujourd'hui qu'à l'authentification (rôle administrateur).
+
+## Limites connues
+
+- Pas de limitation de débit sur `/api/ai/recommend` : à poser avant une mise en ligne.
+- Next 14.2.35 : garder la branche 14.2 à jour (correctifs de sécurité du middleware).

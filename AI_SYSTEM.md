@@ -1,23 +1,22 @@
-# AI_SYSTEM
+# Lecture de la demande et recommandation
 
-`src/lib/ai-orchestrator.ts`. Pipeline imposé : interprétation → besoins structurés → recherche → **moteur déterministe** → optimisation → prix → explication.
+## `requirements.ts`
 
-## `parseRequirements` (heuristic, offline)
+Transforme une phrase en besoins : budget (`1500 €`, `1,5k`, `1200 balles`…), usage, définition d'écran, jeux cités, blanc, RGB, silence, compact, WiFi, marques. Règles écrites à la main. Ce qui est compris est renvoyé à l'utilisateur (« Compris : … ») pour qu'il puisse le vérifier.
 
-Budget (€), résolution (1080p/1440p/4K), jeux connus, blanc/RGB/silence/évolutif, usage. Vérifié : « PC à 1500 € … 1440p … Cyberpunk … blanc, silencieux » → `{ budget:1500, resolution:1440p, games:[cyberpunk,fortnite], white:true, silent:true }`.
+## `optimizer.ts`
 
-## `recommendBuild(req, value|balanced|max)`
+1. Parcourt toutes les paires processeur × carte graphique (et les capacités de mémoire possibles).
+2. Complète chaque paire : carte mère, stockage, refroidissement, boîtier, alimentation — la moins chère qui convient.
+3. Écarte ce que le moteur de compatibilité refuse.
+4. Note chaque configuration (`perf.ts`) et garde la meilleure sous le plafond de prix.
 
-Calibre GPU (budget × résolution : 4060 / 7800 XT / 4070 SUPER / 4090), CPU assorti, **carte mère choisie PAR socket CPU** (jamais l'inverse), RAM par plateforme, PSU par TDP, boîtier pré-dimensionné (GPU+10mm), puis **vérification moteur + auto-réparation documentée** (boîtier XL + 850W si 🔴).
+Trois profils : **économe** (85 % du budget), **équilibrée** (plateforme récente, alimentation Gold modulaire, carte mère solide), **performance** (tout dans les images par seconde). Deux profils identiques n'en font qu'un. Si le budget ne suffit pas, seule la configuration la moins chère est proposée, avec un message clair.
 
-## Providers (`AI_PROVIDER`)
+## `perf.ts`
 
-`heuristic` (défaut, aucune clé) · `openai` (explication seule, contexte moteur fourni, jamais de faits inventés) · `anthropic|mistral|ollama` : brancher dans `llmExplain` (même contrat). Sans `AI_API_KEY` → `llm:null`, produit 100% fonctionnel.
+Estimation : indice de la carte graphique × référence du jeu, plafonnée par l'indice du processeur. Les indices viennent de moyennes de tests publics. À remplacer par des mesures jeu par jeu quand elles seront disponibles.
 
-## Chat (`/api/ai/chat`)
+## Modèle de langage (facultatif)
 
-Actions structurées sur la sélection + re-vérification moteur + re-calcul prix : remplacement GPU, optimisation budget, silence (AIO), questions « pourquoi » (réponse depuis specs). Historique + contexte config courante.
-
-## Optimisation / score / bottleneck
-
-`optimize` : recherche exhaustive dataset × moteur (perf-per-euro, max-fps, min-price…). `scoring.ts` : score /100 + 9 sous-scores expliqués. Bottleneck : heuristique documentée CPU-vs-GPU (prévue pour benchmarks réels jeu par jeu). `performance` : **estimations marquées `estimated:true`, confidence LOW** — jamais présentées comme mesures.
+`AI_PROVIDER=openai` et `AI_API_KEY` dans `.env` activent une explication rédigée. Le modèle reçoit les faits calculés et ne peut rien modifier.

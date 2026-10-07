@@ -1,99 +1,211 @@
 // ============================================================
-// Types canoniques — source de vérité TypeScript (miroir Prisma + specs)
+// Types canoniques — source de vérité TypeScript du catalogue et du moteur.
+// Toutes les dimensions sont en millimètres, les puissances en watts.
 // ============================================================
 
-export type ComponentCategory =
-  | "CPU" | "GPU" | "MOTHERBOARD" | "RAM" | "SSD_NVME" | "SSD_SATA" | "HDD"
-  | "PSU" | "CASE" | "CPU_COOLER" | "AIO" | "FAN" | "THERMAL_PASTE"
-  | "NIC" | "SOUND_CARD" | "EXPANSION" | "OS" | "MONITOR" | "PERIPHERAL";
+/** Les 8 emplacements d'une configuration. */
+export const CATEGORIES = ["CPU", "GPU", "MOTHERBOARD", "RAM", "SSD", "PSU", "CASE", "COOLER"] as const;
+export type ComponentCategory = (typeof CATEGORIES)[number];
 
-export type Confidence = "LOW" | "MEDIUM" | "HIGH" | "VERIFIED_MANUFACTURER";
-export type Severity = "ok" | "warning" | "error";
+/** Pièces sans lesquelles un PC ne démarre pas (GPU et ventirad dépendent du CPU). */
+export const ESSENTIAL: ComponentCategory[] = ["CPU", "MOTHERBOARD", "RAM", "SSD", "PSU", "CASE"];
+
+export const CATEGORY_LABEL: Record<ComponentCategory, string> = {
+  CPU: "Processeur",
+  GPU: "Carte graphique",
+  MOTHERBOARD: "Carte mère",
+  RAM: "Mémoire",
+  SSD: "Stockage",
+  PSU: "Alimentation",
+  CASE: "Boîtier",
+  COOLER: "Refroidissement",
+};
+
+/**
+ * VERIFIED : dimensions et connecteurs relus sur la fiche constructeur ou revendeur.
+ * KNOWN    : specs publiques connues, pas relues une par une.
+ */
+export type Confidence = "VERIFIED" | "KNOWN";
+
+export type FormFactor = "E-ATX" | "ATX" | "Micro-ATX" | "Mini-ITX";
+export type RamType = "DDR4" | "DDR5";
+export type Finish = "black" | "white" | "silver";
 
 export interface CpuSpecs {
-  socket: string; chipset?: string[]; cores: number; threads: number;
-  baseClockGHz: number; boostClockGHz: number; tdpW: number;
-  memoryType: ("DDR4" | "DDR5")[]; maxMemorySpeedMTs: number;
-  pcieVersion: string; integratedGraphics: boolean; cacheMB?: number;
+  socket: string;
+  cores: number;
+  threads: number;
+  boostGHz: number;
+  /** TDP annoncé. */
+  tdpW: number;
+  /** Consommation réelle maximale (PPT chez AMD, PL2 chez Intel). */
+  peakW: number;
+  memoryTypes: RamType[];
+  igpu: boolean;
+  coolerIncluded: boolean;
+  /** Mois de sortie AAAA-MM, sert à détecter un BIOS trop ancien. */
+  released: string;
+  /** Indice de performance en jeu, Ryzen 7 9800X3D = 100 (estimation). */
+  gamingIndex: number;
+  /** Indice multi-cœur, Ryzen 9 9950X = 100 (estimation). */
+  multiIndex: number;
 }
+
 export interface GpuSpecs {
-  lengthMM: number; slots: number; tdpW: number; recommendedPsuW: number;
-  powerConnectors: string[]; pcie: string; vramGB: number; vramType: string;
+  chipset: string;
+  vramGB: number;
+  lengthMM: number;
+  /** Hauteur de la carte, du slot PCIe vers le panneau latéral. */
+  heightMM: number;
+  thicknessMM: number;
+  fans: number;
+  tdpW: number;
+  /** Alimentation recommandée par le constructeur de la carte. */
+  recommendedPsuW: number;
+  power8pin: number;
+  power16pin: number;
+  /** Indice de performance en rastérisation 1440p, RTX 5070 = 100 (estimation). */
+  perfIndex: number;
 }
+
 export interface MotherboardSpecs {
-  socket: string; chipset: string; formFactor: "ATX" | "Micro-ATX" | "Mini-ITX" | "E-ATX";
-  ramType: "DDR4" | "DDR5"; ramSlots: number; maxRamGB: number;
-  maxRamSpeedMTs: number; m2Slots: number; sataPorts: number;
-  pcieX16Version: string; wifi: boolean;
+  socket: string;
+  chipset: string;
+  formFactor: FormFactor;
+  ramType: RamType;
+  ramSlots: number;
+  maxRamGB: number;
+  m2Slots: number;
+  wifi: boolean;
+  /** Mois de sortie de la carte ou de son chipset, AAAA-MM. */
+  released: string;
+  /** 1 = entrée de gamme, 2 = milieu, 3 = haut de gamme (étages d'alimentation). */
+  tier: 1 | 2 | 3;
 }
+
 export interface RamSpecs {
-  type: "DDR4" | "DDR5"; capacityGB: number; sticks: number;
-  speedMTs: number; latencyCL?: number;
+  type: RamType;
+  capacityGB: number;
+  sticks: number;
+  speedMTs: number;
+  cl: number;
+  heightMM: number;
+  rgb: boolean;
 }
-export interface PsuSpecs {
-  wattageW: number; efficiency: string; modular: boolean;
-  connectors: Record<string, number>; // ex: { "8pin_CPU": 2, "16pin_12VHPWR": 1, "8pin_PCIe": 3 }
-}
-export interface CaseSpecs {
-  supportedFormFactors: string[]; maxGpuLengthMM: number; maxCoolerHeightMM: number;
-  radiatorSupportMM: number[]; maxFans?: number; psuFormat?: string;
-}
-export interface CoolerSpecs {
-  sockets: string[]; heightMM?: number; tdpRatingW: number; type: "AIR" | "AIO";
-  radiatorMM?: number;
-}
+
 export interface StorageSpecs {
-  interface: "NVMe" | "SATA" | "HDD"; capacityGB: number; formFactor?: string;
+  interface: "NVMe" | "SATA";
+  capacityGB: number;
+  /** Débit séquentiel en lecture, Mo/s. */
+  readMBs: number;
 }
 
-export type AnySpecs =
-  | CpuSpecs | GpuSpecs | MotherboardSpecs | RamSpecs
-  | PsuSpecs | CaseSpecs | CoolerSpecs | StorageSpecs | Record<string, unknown>;
-
-export interface Component {
-  id: string; category: ComponentCategory; brand: string; model: string;
-  slug: string; imageUrl?: string; msrp?: number;
-  specs: AnySpecs;
-  source: string; confidence: Confidence; updatedAt: string;
+export interface PsuSpecs {
+  wattageW: number;
+  efficiency: "Bronze" | "Gold" | "Platinum" | "Titanium";
+  modular: "full" | "none";
+  lengthMM: number;
+  /** Nombre de connecteurs PCIe 6+2 broches. */
+  pcie8: number;
+  /** Nombre de connecteurs 16 broches natifs (12VHPWR / 12V-2x6). */
+  hpwr16: number;
 }
 
-export interface MerchantOffer {
-  merchant: string; price: number; currency: string;
-  inStock: boolean; shipping?: number; url?: string;
-  fetchedAt: string; source: string; bestPrice?: boolean;
+export interface CaseSpecs {
+  formFactors: FormFactor[];
+  maxGpuLengthMM: number;
+  maxCoolerHeightMM: number;
+  /** Plus grand radiateur accepté par emplacement, 0 = aucun. */
+  radiatorTopMM: number;
+  radiatorFrontMM: number;
+  radiatorSideMM: number;
+  psuMaxLengthMM: number;
+  /** Dimensions extérieures : hauteur, largeur, profondeur. */
+  dims: { h: number; w: number; d: number };
+  /** dual = alimentation derrière la carte mère (boîtier « aquarium »). */
+  layout: "standard" | "dual";
+  front: "mesh" | "glass" | "wood" | "solid";
+  includedFans: number;
+  rgbFans: boolean;
 }
 
-export interface BuildSelection {
-  CPU?: string; GPU?: string; MOTHERBOARD?: string; RAM?: string;
-  SSD_NVME?: string; PSU?: string; CASE?: string;
-  CPU_COOLER?: string; AIO?: string; [k: string]: string | undefined;
+export interface CoolerSpecs {
+  kind: "AIR" | "AIO";
+  sockets: string[];
+  /** Ventirad : hauteur totale. */
+  heightMM?: number;
+  /** Watercooling : longueur nominale du radiateur (240, 280, 360, 420). */
+  radiatorMM?: number;
+  /** Puissance dissipable annoncée ou estimée. */
+  tdpRatingW: number;
+  fans: number;
+  rgb: boolean;
 }
+
+export interface SpecsByCategory {
+  CPU: CpuSpecs;
+  GPU: GpuSpecs;
+  MOTHERBOARD: MotherboardSpecs;
+  RAM: RamSpecs;
+  SSD: StorageSpecs;
+  PSU: PsuSpecs;
+  CASE: CaseSpecs;
+  COOLER: CoolerSpecs;
+}
+
+export interface ComponentOf<C extends ComponentCategory> {
+  id: string;
+  category: C;
+  brand: string;
+  model: string;
+  finish: Finish;
+  /** Prix indicatif en euros relevé à la date PRICE_DATE du catalogue. */
+  price: number;
+  /** Identifiant produit Amazon, quand il est connu : donne un lien direct. */
+  asin?: string;
+  /**
+   * Adresse d'une photo officielle du produit, quand on a le droit de l'afficher
+   * (image fournie par l'API d'un programme d'affiliation, par exemple). Sinon, le site montre son propre rendu 3D.
+   */
+  photo?: string;
+  confidence: Confidence;
+  specs: SpecsByCategory[C];
+}
+
+export type Component = { [C in ComponentCategory]: ComponentOf<C> }[ComponentCategory];
+
+export type BuildSelection = Partial<Record<ComponentCategory, string>>;
+export type ResolvedBuild = { [C in ComponentCategory]?: ComponentOf<C> };
+
+export type Severity = "error" | "warning" | "info";
 
 export interface CompatibilityIssue {
-  severity: Severity; // ok n'est jamais stocké, réservé au statut global
-  code: string; // ex: SOCKET_MISMATCH
-  components: string[]; // ids concernés
-  message: string; // explication humaine FR
-  fix: string; // solution proposée FR
+  severity: Severity;
+  code: string;
+  /** Emplacements concernés, pour surligner les pièces dans l'interface. */
+  slots: ComponentCategory[];
+  message: string;
+  fix: string;
 }
 
-export type CompatibilityStatus = "compatible" | "warning" | "incompatible";
+export type CompatibilityStatus = "compatible" | "warning" | "incompatible" | "incomplete";
 
 export interface CompatibilityResult {
   status: CompatibilityStatus;
   issues: CompatibilityIssue[];
-  checkedAt: string;
+  /** Pièces indispensables pas encore choisies. */
+  missing: ComponentCategory[];
+  /** Consommation maximale estimée de la configuration. */
+  estimatedPeakW: number;
   engineVersion: string;
 }
 
-export interface BuildScore {
-  total: number;
-  details: Record<"performance" | "value" | "compatibility" | "balance" | "upgradeability" | "efficiency" | "cooling" | "noise" | "aesthetics", number>;
-  reasons: string[];
-}
+export type Resolution = "1080p" | "1440p" | "4K";
+export type Usage = "gaming" | "creation" | "streaming" | "bureautique";
 
 export interface PerfEstimate {
   game: string;
-  res1080p: number | null; res1440p: number | null; res4K: number | null;
-  estimated: true; confidence: Confidence; note: string;
+  fps: number;
+  /** Ce qui limite le plus les images par seconde dans ce jeu. */
+  limitedBy: "CPU" | "GPU";
 }

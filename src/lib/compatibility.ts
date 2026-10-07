@@ -1,205 +1,242 @@
 // ============================================================
-// MOTEUR DE COMPATIBILITÉ DÉTERMINISTE — v1.0.0
-// Le LLM ne décide JAMAIS de la compatibilité. Ce moteur est la
-// seule source de vérité. Voir COMPATIBILITY_ENGINE.md.
-// Retourne 🟢 compatible / 🟡 warning / 🔴 incompatible + explications FR.
+// MOTEUR DE COMPATIBILITÉ DÉTERMINISTE — v2
+// Seule source de vérité sur la compatibilité : aucune IA n'intervient ici.
+// Fonction pure : une sélection + un résolveur de pièces → un verdict expliqué.
 // ============================================================
 import type {
-  BuildSelection, CompatibilityIssue, CompatibilityResult,
-  Component, CpuSpecs, GpuSpecs, MotherboardSpecs, RamSpecs,
-  PsuSpecs, CaseSpecs, CoolerSpecs,
+  BuildSelection, CompatibilityIssue, CompatibilityResult, CompatibilityStatus,
+  ComponentCategory, ResolvedBuild, Severity,
 } from "./types";
-import { byId } from "./demo-data";
+import { CATEGORY_LABEL, ESSENTIAL } from "./types";
+import { PRICE_DATE, byId, fullName, resolveBuild, type Resolver } from "./catalog";
 
-export const ENGINE_VERSION = "1.0.0";
+export const ENGINE_VERSION = "2.0.0";
 
-type Ctx = Record<string, Component>;
+/** Consommation hors CPU et GPU : carte mère, mémoire, stockage, ventilateurs. */
+const BASE_LOAD_W = 60;
 
-function err(code: string, components: string[], message: string, fix: string): CompatibilityIssue {
-  return { severity: "error", code, components, message, fix };
-}
-function warn(code: string, components: string[], message: string, fix: string): CompatibilityIssue {
-  return { severity: "warning", code, components, message, fix };
-}
-
-export function resolveSelection(sel: BuildSelection): { ctx: Ctx; missing: string[] } {
-  const ctx: Ctx = {};
-  const missing: string[] = [];
-  for (const [cat, id] of Object.entries(sel)) {
-    if (!id) { missing.push(cat); continue; }
-    const c = byId(id);
-    if (!c) { missing.push(`${cat}:${id}`); continue; }
-    ctx[cat] = c;
-  }
-  return { ctx, missing };
+function issue(severity: Severity, code: string, slots: ComponentCategory[], message: string, fix: string): CompatibilityIssue {
+  return { severity, code, slots, message, fix };
 }
 
-export function checkCompatibility(sel: BuildSelection): CompatibilityResult {
+function monthsBetween(from: string, to: string): number {
+  const [fy, fm] = from.split("-").map(Number);
+  const [ty, tm] = to.split("-").map(Number);
+  return (ty - fy) * 12 + (tm - fm);
+}
+
+/** Consommation maximale estimée : pic CPU + GPU + reste de la machine. */
+export function estimatePeakW(build: ResolvedBuild): number {
+  if (!build.CPU && !build.GPU) return 0;
+  return (build.CPU?.specs.peakW ?? 0) + (build.GPU?.specs.tdpW ?? 0) + BASE_LOAD_W;
+}
+
+/** Puissance d'alimentation conseillée pour une config, arrondie aux 50 W supérieurs. */
+export function recommendedPsuW(build: ResolvedBuild): number {
+  const need = Math.max(estimatePeakW(build) * 1.4, build.GPU?.specs.recommendedPsuW ?? 0);
+  return Math.ceil(need / 50) * 50;
+}
+
+/**
+ * @param asOf mois de référence AAAA-MM pour juger si un processeur est « récent » (par défaut : date du catalogue).
+ */
+export function checkBuild(build: ResolvedBuild, unknown: ComponentCategory[] = [], asOf: string = PRICE_DATE.slice(0, 7)): CompatibilityResult {
   const issues: CompatibilityIssue[] = [];
-  const { ctx } = resolveSelection(sel);
-  const cpu = ctx["CPU"] as Component | undefined;
-  const gpu = ctx["GPU"] as Component | undefined;
-  const mb = ctx["MOTHERBOARD"] as Component | undefined;
-  const ram = ctx["RAM"] as Component | undefined;
-  const psu = ctx["PSU"] as Component | undefined;
-  const pcCase = ctx["CASE"] as Component | undefined;
-  const air = (ctx["CPU_COOLER"] ?? ctx["AIO"]) as Component | undefined;
+  const { CPU: cpu, GPU: gpu, MOTHERBOARD: mb, RAM: ram, SSD: ssd, PSU: psu, CASE: pcCase, COOLER: cooler } = build;
 
-  const cpuS = cpu?.specs as CpuSpecs | undefined;
-  const mbS = mb?.specs as MotherboardSpecs | undefined;
-  const ramS = ram?.specs as RamSpecs | undefined;
-  const gpuS = gpu?.specs as GpuSpecs | undefined;
-  const psuS = psu?.specs as PsuSpecs | undefined;
-  const caseS = pcCase?.specs as CaseSpecs | undefined;
-  const coolS = air?.specs as CoolerSpecs | undefined;
+  for (const slot of unknown) {
+    issues.push(issue("error", "UNKNOWN_COMPONENT", [slot],
+      `Référence inconnue pour l'emplacement « ${CATEGORY_LABEL[slot]} ».`,
+      "Choisissez une pièce du catalogue."));
+  }
 
-  // --- 1. CPU ↔ socket motherboard ---
-  if (cpu && mb && cpuS && mbS && cpuS.socket !== mbS.socket) {
-    issues.push(err("SOCKET_MISMATCH", [cpu.id, mb.id],
-      `🔴 Socket incompatible : le ${cpu.brand} ${cpu.model} est en ${cpuS.socket} alors que la ${mb.model} est en ${mbS.socket}.`,
-      `Choisissez un CPU ${mbS.socket} ou une carte mère ${cpuS.socket}.`));
+  // --- 1. Processeur ↔ carte mère ---
+  if (cpu && mb && cpu.specs.socket !== mb.specs.socket) {
+    issues.push(issue("error", "SOCKET_MISMATCH", ["CPU", "MOTHERBOARD"],
+      `Le ${fullName(cpu)} se monte sur un socket ${cpu.specs.socket}, la ${fullName(mb)} a un socket ${mb.specs.socket}.`,
+      `Prenez un processeur ${mb.specs.socket} ou une carte mère ${cpu.specs.socket}.`));
   }
-  // --- 2. RAM ↔ type DDR ---
-  if (mb && ram && mbS && ramS && mbS.ramType !== ramS.type) {
-    issues.push(err("RAM_TYPE_MISMATCH", [mb.id, ram.id],
-      `🔴 RAM incompatible : la carte mère exige de la ${mbS.ramType} mais le kit est en ${ramS.type}.`,
-      `Choisissez un kit ${mbS.ramType} ou une carte mère ${ramS.type}.`));
-  }
-  if (cpu && ram && cpuS && ramS) {
-    const supported = (cpuS.memoryType as string[]).includes(ramS.type);
-    if (!supported) {
-      issues.push(err("CPU_RAM_TYPE", [cpu.id, ram.id],
-        `🔴 Le contrôleur mémoire du ${cpu.model} ne supporte pas la ${ramS.type} (supporte : ${cpuS.memoryType.join(", ")}).`,
-        `Choisissez un kit ${cpuS.memoryType.join(" ou ")}.`));
+  if (cpu && mb && cpu.specs.socket === mb.specs.socket) {
+    // Un processeur sorti après le chipset a besoin d'un BIOS récent. Le risque est réel tant que le
+    // processeur est nouveau ; au-delà d'un an, les cartes en vente ont été mises à jour en usine.
+    const gap = monthsBetween(mb.specs.released, cpu.specs.released);
+    const cpuAge = monthsBetween(cpu.specs.released, asOf);
+    if (gap > 0 && cpuAge <= 30) {
+      issues.push(issue(cpuAge <= 12 ? "warning" : "info", "BIOS_UPDATE", ["CPU", "MOTHERBOARD"],
+        `Le ${cpu.model} est sorti après le chipset ${mb.specs.chipset} : une carte restée en stock peut avoir un BIOS trop ancien pour le reconnaître.`,
+        "Vérifiez la version de BIOS auprès du vendeur, ou mettez-le à jour (fonction BIOS Flashback si la carte en dispose)."));
     }
   }
-  // --- 3. RAM fréquence / capacité / slots ---
-  if (mb && ram && mbS && ramS) {
-    if (ramS.speedMTs > mbS.maxRamSpeedMTs) {
-      issues.push(warn("RAM_SPEED_OC", [mb.id, ram.id],
-        `🟡 Kit ${ramS.speedMTs} MT/s au-delà du support officiel ${mbS.maxRamSpeedMTs} MT/s (XMP/EXPO requis, non garanti).`,
-        `Activez XMP/EXPO dans le BIOS, ou choisissez un kit ≤ ${mbS.maxRamSpeedMTs} MT/s pour du plug-and-play.`));
+
+  // --- 2. Mémoire ---
+  if (mb && ram && mb.specs.ramType !== ram.specs.type) {
+    issues.push(issue("error", "RAM_TYPE_MISMATCH", ["MOTHERBOARD", "RAM"],
+      `La ${fullName(mb)} accepte de la ${mb.specs.ramType}, le kit choisi est en ${ram.specs.type}.`,
+      `Prenez un kit ${mb.specs.ramType}.`));
+  }
+  if (cpu && ram && !cpu.specs.memoryTypes.includes(ram.specs.type)) {
+    issues.push(issue("error", "CPU_RAM_TYPE", ["CPU", "RAM"],
+      `Le ${cpu.model} ne gère pas la ${ram.specs.type} (il gère : ${cpu.specs.memoryTypes.join(", ")}).`,
+      `Prenez un kit ${cpu.specs.memoryTypes.join(" ou ")}.`));
+  }
+  if (mb && ram) {
+    if (ram.specs.sticks > mb.specs.ramSlots) {
+      issues.push(issue("error", "RAM_SLOTS", ["MOTHERBOARD", "RAM"],
+        `Le kit compte ${ram.specs.sticks} barrettes, la carte mère n'a que ${mb.specs.ramSlots} emplacements.`,
+        `Prenez un kit de ${mb.specs.ramSlots} barrettes au plus.`));
     }
-    if (ramS.capacityGB > mbS.maxRamGB) {
-      issues.push(err("RAM_CAPACITY", [mb.id, ram.id],
-        `🔴 Kit ${ramS.capacityGB} GB supérieur au maximum ${mbS.maxRamGB} GB de la carte mère.`,
-        `Réduisez la capacité ou changez de carte mère.`));
-    }
-    if (ramS.sticks > mbS.ramSlots) {
-      issues.push(err("RAM_SLOTS", [mb.id, ram.id],
-        `🔴 Kit de ${ramS.sticks} barrettes pour ${mbS.ramSlots} slots DIMM.`,
-        `Choisissez un kit de ${mbS.ramSlots} barrettes maximum.`));
+    if (ram.specs.capacityGB > mb.specs.maxRamGB) {
+      issues.push(issue("error", "RAM_CAPACITY", ["MOTHERBOARD", "RAM"],
+        `${ram.specs.capacityGB} Go dépassent le maximum de ${mb.specs.maxRamGB} Go de la carte mère.`,
+        "Réduisez la capacité ou changez de carte mère."));
     }
   }
-  // --- 4. Motherboard ↔ boîtier (format) ---
-  if (mb && pcCase && mbS && caseS) {
-    if (!caseS.supportedFormFactors.includes(mbS.formFactor)) {
-      issues.push(err("FORM_FACTOR", [mb.id, pcCase.id],
-        `🔴 Carte mère ${mbS.formFactor} non supportée par le boîtier ${pcCase.model} (accepte : ${caseS.supportedFormFactors.join(", ")}).`,
-        `Choisissez un boîtier compatible ${mbS.formFactor} ou une carte mère ${caseS.supportedFormFactors.join("/")}.`));
+  if (ram && ((ram.specs.type === "DDR5" && ram.specs.speedMTs > 5600) || (ram.specs.type === "DDR4" && ram.specs.speedMTs > 3200))) {
+    issues.push(issue("info", "RAM_PROFILE", ["RAM"],
+      `Le kit n'atteint ses ${ram.specs.speedMTs} MT/s qu'avec le profil EXPO ou XMP activé.`,
+      "Activez le profil mémoire dans le BIOS au premier démarrage."));
+  }
+
+  // --- 3. Carte mère ↔ boîtier ---
+  if (mb && pcCase && !pcCase.specs.formFactors.includes(mb.specs.formFactor)) {
+    issues.push(issue("error", "FORM_FACTOR", ["MOTHERBOARD", "CASE"],
+      `Le boîtier ${fullName(pcCase)} n'accepte pas le format ${mb.specs.formFactor} (formats acceptés : ${pcCase.specs.formFactors.join(", ")}).`,
+      `Prenez un boîtier ${mb.specs.formFactor} ou une carte mère plus compacte.`));
+  }
+
+  // --- 4. Carte graphique ---
+  if (cpu && !gpu && !cpu.specs.igpu) {
+    issues.push(issue("warning", "NO_DISPLAY", ["CPU", "GPU"],
+      `Le ${cpu.model} n'a pas de puce graphique intégrée : sans carte graphique, aucun écran ne s'allumera.`,
+      "Ajoutez une carte graphique, ou prenez un processeur avec graphiques intégrés."));
+  }
+  if (gpu && pcCase) {
+    const margin = pcCase.specs.maxGpuLengthMM - gpu.specs.lengthMM;
+    if (margin < 0) {
+      issues.push(issue("error", "GPU_LENGTH", ["GPU", "CASE"],
+        `La carte graphique mesure ${gpu.specs.lengthMM} mm, le boîtier en accepte ${pcCase.specs.maxGpuLengthMM} mm au maximum.`,
+        `Prenez une carte de ${pcCase.specs.maxGpuLengthMM} mm ou moins, ou un boîtier plus profond.`));
+    } else if (margin < 20) {
+      issues.push(issue("warning", "GPU_LENGTH_TIGHT", ["GPU", "CASE"],
+        `Il ne reste que ${margin} mm entre la carte graphique et l'avant du boîtier.`,
+        "Le montage passe, mais sans place pour un radiateur ou des ventilateurs épais à l'avant."));
     }
   }
-  // --- 5. GPU ↔ longueur boîtier / épaisseur ---
-  if (gpu && pcCase && gpuS && caseS) {
-    if (gpuS.lengthMM > caseS.maxGpuLengthMM) {
-      issues.push(err("GPU_LENGTH", [gpu.id, pcCase.id],
-        `🔴 Cette carte graphique mesure ${gpuS.lengthMM} mm alors que le boîtier accepte maximum ${caseS.maxGpuLengthMM} mm.`,
-        `Choisissez un GPU ≤ ${caseS.maxGpuLengthMM} mm ou un boîtier plus grand.`));
-    } else if (caseS.maxGpuLengthMM - gpuS.lengthMM < 15) {
-      issues.push(warn("GPU_LENGTH_TIGHT", [gpu.id, pcCase.id],
-        `🟡 Seulement ${caseS.maxGpuLengthMM - gpuS.lengthMM} mm de marge pour le GPU — montage serré, câbles coudés conseillés.`,
-        `Prévoyez un montage soigné ou un boîtier plus spacieux.`));
-    }
-    if (gpuS.slots > 3) {
-      issues.push(warn("GPU_THICK", [gpu.id],
-        `🟡 GPU très épais (${gpuS.slots} slots) : vérifiez le dégagement PCIe et la ventilation.`,
-        `Vérifiez la fiche boîtier + espacement des slots PCIe.`));
+
+  // --- 5. Alimentation ---
+  const peak = estimatePeakW(build);
+  if (psu && (cpu || gpu)) {
+    if (psu.specs.wattageW < peak * 1.15) {
+      issues.push(issue("error", "PSU_WATTAGE", ["PSU"],
+        `Alimentation de ${psu.specs.wattageW} W pour une consommation en pointe estimée à ${peak} W : la marge est insuffisante.`,
+        `Visez au moins ${recommendedPsuW(build)} W.`));
+    } else if (psu.specs.wattageW < recommendedPsuW(build)) {
+      const reco = gpu && gpu.specs.recommendedPsuW > psu.specs.wattageW
+        ? `Le constructeur de la carte graphique recommande ${gpu.specs.recommendedPsuW} W.`
+        : `Consommation en pointe estimée à ${peak} W.`;
+      issues.push(issue("warning", "PSU_HEADROOM", ["PSU"],
+        `Alimentation de ${psu.specs.wattageW} W : ça fonctionne, avec peu de marge. ${reco}`,
+        `${recommendedPsuW(build)} W laisseraient de la marge pour le silence et une future carte graphique.`));
     }
   }
-  // --- 6. PSU ↔ puissance recommandée + connecteurs ---
-  if (gpu && psu && gpuS && psuS) {
-    const sysW = gpuS.tdpW + 150; // CPU+plateforme : estimation prudente documentée
-    if (psuS.wattageW < gpuS.recommendedPsuW) {
-      issues.push(err("PSU_WATTAGE", [gpu.id, psu.id],
-        `🔴 Alimentation ${psuS.wattageW} W insuffisante : ${gpuS.recommendedPsuW} W recommandés pour la ${gpu.model}.`,
-        `Choisissez une alimentation ≥ ${gpuS.recommendedPsuW} W de marque réputée.`));
-    } else if (psuS.wattageW < Math.ceil(sysW * 1.25)) {
-      issues.push(warn("PSU_HEADROOM", [gpu.id, psu.id],
-        `🟡 Peu de marge : ${psuS.wattageW} W pour ~${sysW} W estimés (marge < 25%).`,
-        `Visez ~${Math.ceil(sysW * 1.4)} W pour le silence, les pics transitoires et l'upgrade.`));
+  if (psu && gpu) {
+    if (gpu.specs.power8pin > psu.specs.pcie8) {
+      issues.push(issue("error", "PSU_CONNECTOR", ["GPU", "PSU"],
+        `La carte graphique demande ${gpu.specs.power8pin} connecteurs PCIe 8 broches, l'alimentation en fournit ${psu.specs.pcie8}.`,
+        `Prenez une alimentation avec au moins ${gpu.specs.power8pin} connecteurs PCIe 8 broches.`));
     }
-    for (const conn of gpuS.powerConnectors) {
-      const have = psuS.connectors[conn] ?? (conn === "16pin_12VHPWR" && (psuS.connectors["16pin_12VHPWR"] ?? 0));
-      if (!have || have < 1) {
-        // Tolère adaptateur fourni avec GPU récent si PSU a assez de PCIe 8pin
-        const pcie8 = psuS.connectors["8pin_PCIe"] ?? 0;
-        if (conn === "16pin_12VHPWR" && pcie8 >= 2) {
-          issues.push(warn("PSU_ADAPTER", [gpu.id, psu.id],
-            `🟡 GPU ${conn} mais PSU sans ce connecteur natif : adaptateur ${pcie8}×8pin→16pin généralement fourni.`,
-            `Utilisez l'adaptateur officiel du GPU, ou une alimentation ATX 3.0 native ${conn}.`));
-        } else {
-          issues.push(err("PSU_CONNECTOR", [gpu.id, psu.id],
-            `🔴 Connecteur manquant : le GPU exige ${gpuS.powerConnectors.join(" + ")} mais l'alimentation ne le fournit pas.`,
-            `Choisissez une alimentation avec ${conn} ou un autre GPU.`));
-        }
+    if (gpu.specs.power16pin > psu.specs.hpwr16) {
+      // Les cartes sont livrées avec un adaptateur : 2, 3 ou 4 prises 8 broches selon leur consommation.
+      const adapterNeeds = gpu.specs.tdpW > 450 ? 4 : gpu.specs.tdpW > 300 ? 3 : 2;
+      if (psu.specs.pcie8 >= adapterNeeds) {
+        issues.push(issue("warning", "PSU_ADAPTER", ["GPU", "PSU"],
+          `L'alimentation n'a pas de connecteur 16 broches natif : il faudra l'adaptateur fourni avec la carte (${adapterNeeds} prises 8 broches).`,
+          "Une alimentation ATX 3.1 avec câble 12V-2x6 natif est plus propre et plus sûre."));
+      } else {
+        issues.push(issue("error", "PSU_CONNECTOR", ["GPU", "PSU"],
+          `La carte graphique se branche en 16 broches. L'alimentation n'en a pas, et ses ${psu.specs.pcie8} prises 8 broches ne suffisent pas pour l'adaptateur (${adapterNeeds} nécessaires).`,
+          "Prenez une alimentation ATX 3.1 avec connecteur 12V-2x6."));
       }
     }
   }
-  // --- 7. Cooler ↔ socket / hauteur / radiateur ---
-  if (cpu && air && cpuS && coolS) {
-    if (!coolS.sockets.includes(cpuS.socket)) {
-      issues.push(err("COOLER_SOCKET", [cpu.id, air.id],
-        `🔴 Ventirad incompatible avec le socket ${cpuS.socket}.`,
-        `Choisissez un refroidissement supportant ${cpuS.socket} (kit de montage parfois fourni).`));
-    }
-    if (coolS.tdpRatingW < cpuS.tdpW) {
-      issues.push(warn("COOLER_TDP", [cpu.id, air.id],
-        `🟡 Refroidissement rated ${coolS.tdpRatingW} W pour un CPU ${cpuS.tdpW} W : limite en charge soutenue.`,
-        `Prévoyez un modèle ≥ ${Math.ceil(cpuS.tdpW * 1.4)} W ou limitez le PBO/power-limit.`));
+  if (psu && pcCase && psu.specs.lengthMM > pcCase.specs.psuMaxLengthMM) {
+    issues.push(issue("error", "PSU_LENGTH", ["PSU", "CASE"],
+      `L'alimentation mesure ${psu.specs.lengthMM} mm de long, le boîtier en accepte ${pcCase.specs.psuMaxLengthMM} mm.`,
+      "Prenez une alimentation plus courte."));
+  }
+
+  // --- 6. Refroidissement ---
+  if (cpu && !cooler) {
+    if (cpu.specs.coolerIncluded) {
+      issues.push(issue("info", "STOCK_COOLER", ["CPU", "COOLER"],
+        `Le ${cpu.model} est livré avec un ventirad : il suffit, mais il est plus bruyant qu'un modèle tour.`,
+        "Un ventirad tour à partir de 25 € rend la machine nettement plus silencieuse."));
+    } else {
+      issues.push(issue("warning", "NO_COOLER", ["CPU", "COOLER"],
+        `Le ${cpu.model} est vendu sans ventirad.`,
+        "Ajoutez un ventirad ou un watercooling."));
     }
   }
-  if (air && pcCase && coolS && caseS) {
-    if (coolS.type === "AIR" && coolS.heightMM && coolS.heightMM > caseS.maxCoolerHeightMM) {
-      issues.push(err("COOLER_HEIGHT", [air.id, pcCase.id],
-        `🔴 Ventirad ${coolS.heightMM} mm trop haut pour le boîtier (max ${caseS.maxCoolerHeightMM} mm).`,
-        `Choisissez un ventirad ≤ ${caseS.maxCoolerHeightMM} mm ou un boîtier plus haut.`));
+  if (cpu && cooler) {
+    if (!cooler.specs.sockets.includes(cpu.specs.socket)) {
+      issues.push(issue("error", "COOLER_SOCKET", ["CPU", "COOLER"],
+        `Le ${fullName(cooler)} ne se fixe pas sur un socket ${cpu.specs.socket}.`,
+        `Prenez un refroidissement compatible ${cpu.specs.socket}.`));
     }
-    if (coolS.type === "AIO" && coolS.radiatorMM && !caseS.radiatorSupportMM.includes(coolS.radiatorMM)) {
-      issues.push(err("RADIATOR_SUPPORT", [air.id, pcCase.id],
-        `🔴 Radiateur ${coolS.radiatorMM} mm non supporté par le boîtier (supporte : ${caseS.radiatorSupportMM.join(", ")} mm).`,
-        `Choisissez un radiateur ${caseS.radiatorSupportMM.join(" / ")} mm ou un autre boîtier.`));
-    }
-  }
-  // --- 8. SSD ↔ slots M.2 ---
-  const ssd = ctx["SSD_NVME"] as Component | undefined;
-  if (ssd && mb && mbS) {
-    if (mbS.m2Slots < 1) {
-      issues.push(err("M2_SLOTS", [ssd.id, mb.id],
-        `🔴 Aucun slot M.2 sur cette carte mère pour le SSD NVMe.`,
-        `Choisissez une carte mère avec slot M.2 ou un SSD SATA.`));
+    if (cooler.specs.tdpRatingW < cpu.specs.peakW) {
+      issues.push(issue("warning", "COOLER_TDP", ["CPU", "COOLER"],
+        `Le ${fullName(cooler)} est donné pour ${cooler.specs.tdpRatingW} W, le ${cpu.model} peut en dégager ${cpu.specs.peakW} en charge.`,
+        "Le processeur ralentira en charge soutenue. Prenez un refroidissement plus gros."));
     }
   }
-  // --- 9. PCIe sanity (GPU x8 sur carte x16 : ok, juste info si vieux chipset) ---
-  if (gpu && mb && gpuS && mbS) {
-    const gpuGen = parseFloat(gpuS.pcie);
-    const mbGen = parseFloat(mbS.pcieX16Version);
-    if (!Number.isNaN(gpuGen) && !Number.isNaN(mbGen) && mbGen < gpuGen - 1) {
-      issues.push(warn("PCIE_GEN", [gpu.id, mb.id],
-        `🟡 GPU PCIe ${gpuS.pcie} sur slot ${mbS.pcieX16Version} : fonctionne, mais bande passante réduite sur les GPU x8.`,
-        `Privilégiez une carte mère PCIe ≥ ${gpuS.pcie} pour les petits GPU, ou un GPU x16.`));
+  if (cooler && pcCase) {
+    if (cooler.specs.kind === "AIR" && cooler.specs.heightMM && cooler.specs.heightMM > pcCase.specs.maxCoolerHeightMM) {
+      issues.push(issue("error", "COOLER_HEIGHT", ["COOLER", "CASE"],
+        `Le ventirad mesure ${cooler.specs.heightMM} mm de haut, le boîtier en accepte ${pcCase.specs.maxCoolerHeightMM} mm : le panneau latéral ne fermera pas.`,
+        `Prenez un ventirad de ${pcCase.specs.maxCoolerHeightMM} mm ou moins, ou un watercooling.`));
+    }
+    if (cooler.specs.kind === "AIO" && cooler.specs.radiatorMM) {
+      const biggest = Math.max(pcCase.specs.radiatorTopMM, pcCase.specs.radiatorFrontMM, pcCase.specs.radiatorSideMM);
+      if (cooler.specs.radiatorMM > biggest) {
+        issues.push(issue("error", "RADIATOR_SUPPORT", ["COOLER", "CASE"],
+          `Le radiateur de ${cooler.specs.radiatorMM} mm ne rentre pas : le boîtier accepte ${biggest || "aucun radiateur"}${biggest ? " mm au maximum" : ""}.`,
+          biggest ? `Prenez un watercooling de ${biggest} mm ou moins.` : "Prenez un ventirad."));
+      }
     }
   }
+
+  // --- 7. Stockage ---
+  if (ssd && mb && ssd.specs.interface === "NVMe" && mb.specs.m2Slots < 1) {
+    issues.push(issue("error", "M2_SLOTS", ["SSD", "MOTHERBOARD"],
+      "La carte mère n'a pas d'emplacement M.2 pour ce SSD NVMe.",
+      "Prenez un SSD SATA ou une autre carte mère."));
+  }
+
+  // Pièces manquantes : les six indispensables, plus la carte graphique et le ventirad quand le processeur les exige.
+  const missing = ESSENTIAL.filter((slot) => !build[slot] && !unknown.includes(slot));
+  if (cpu && !gpu && !cpu.specs.igpu && !unknown.includes("GPU")) missing.push("GPU");
+  if (cpu && !cooler && !cpu.specs.coolerIncluded && !unknown.includes("COOLER")) missing.push("COOLER");
+
+  // Les blocages d'abord, puis les réserves, puis les simples informations.
+  const rank = { error: 0, warning: 1, info: 2 } as const;
+  issues.sort((a, b) => rank[a.severity] - rank[b.severity]);
 
   const hasError = issues.some((i) => i.severity === "error");
-  const hasWarn = issues.some((i) => i.severity === "warning");
-  return {
-    status: hasError ? "incompatible" : hasWarn ? "warning" : "compatible",
-    issues,
-    checkedAt: new Date().toISOString(),
-    engineVersion: ENGINE_VERSION,
-  };
+  const hasWarning = issues.some((i) => i.severity === "warning");
+  const status: CompatibilityStatus = hasError ? "incompatible" : missing.length ? "incomplete" : hasWarning ? "warning" : "compatible";
+
+  return { status, issues, missing, estimatedPeakW: peak, engineVersion: ENGINE_VERSION };
 }
 
-export function statusEmoji(s: CompatibilityResult["status"]): string {
-  return s === "compatible" ? "🟢" : s === "warning" ? "🟡" : "🔴";
+/** Point d'entrée habituel : vérifie une sélection d'identifiants. */
+export function checkCompatibility(sel: BuildSelection, resolve: Resolver = byId): CompatibilityResult {
+  const { build, unknown } = resolveBuild(sel, resolve);
+  return checkBuild(build, unknown);
 }
+
+export const STATUS_LABEL: Record<CompatibilityStatus, string> = {
+  compatible: "Compatible",
+  warning: "Compatible avec réserves",
+  incompatible: "Incompatible",
+  incomplete: "Incomplète",
+};
