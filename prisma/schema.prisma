@@ -1,0 +1,335 @@
+// ============================================================
+// AI PC Builder — schéma relationnel (PostgreSQL prod)
+// Voir DATABASE.md. Mode DEMO sans DB : src/lib/demo-data.ts
+// ============================================================
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ComponentCategory {
+  CPU
+  GPU
+  MOTHERBOARD
+  RAM
+  SSD_NVME
+  SSD_SATA
+  HDD
+  PSU
+  CASE
+  CPU_COOLER
+  AIO
+  FAN
+  THERMAL_PASTE
+  NIC
+  SOUND_CARD
+  EXPANSION
+  OS
+  MONITOR
+  PERIPHERAL
+}
+
+enum Confidence {
+  LOW
+  MEDIUM
+  HIGH
+  VERIFIED_MANUFACTURER
+}
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  username      String    @unique
+  passwordHash  String?
+  role          UserRole  @default(USER)
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  profile       Profile?
+  builds        Build[]
+  likes         Like[]
+  comments      Comment[]
+  follows       Follow[]  @relation("follower")
+  followers     Follow[]  @relation("following")
+  badges        UserBadge[]
+  priceAlerts   PriceAlert[]
+  notifications Notification[]
+  reports       Report[]  @relation("reporter")
+  accounts      Account[]
+  sessions      Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Profile {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  bio       String?  @db.Text
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Component {
+  id         String            @id @default(cuid())
+  category   ComponentCategory
+  brand      String
+  model      String
+  slug       String            @unique
+  imageUrl   String?
+  msrp       Decimal?          @db.Decimal(10, 2)
+  releaseDate DateTime?
+  // Specs normalisées en JSON validé par zod (voir src/lib/schemas.ts)
+  specs      Json
+  source     String            @default("DEMO_SEED")
+  sourceUrl  String?
+  confidence Confidence        @default(LOW)
+  updatedAt  DateTime          @updatedAt
+  createdAt  DateTime          @default(now())
+  prices     Price[]
+  benchmarks Benchmark[]
+  buildItems BuildItem[]
+  alerts     PriceAlert[]
+  @@index([category])
+  @@index([brand])
+  @@index([updatedAt])
+}
+
+model Merchant {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  baseUrl     String?
+  network     String?
+  trackingTpl String?
+  active      Boolean  @default(false)
+  priority    Int      @default(0)
+  commission  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  prices      Price[]
+}
+
+model Price {
+  id          String    @id @default(cuid())
+  componentId String
+  merchantId  String
+  price       Decimal   @db.Decimal(10, 2)
+  currency    String    @default("EUR")
+  inStock     Boolean   @default(false)
+  shipping    Decimal?  @db.Decimal(10, 2)
+  url         String?
+  fetchedAt   DateTime  @default(now())
+  source      String    @default("DEMO_SEED")
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  merchant    Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  @@index([componentId, fetchedAt])
+  @@index([merchantId])
+}
+
+model PriceHistory {
+  id          String   @id @default(cuid())
+  componentId String
+  merchantId  String
+  price       Decimal  @db.Decimal(10, 2)
+  currency    String   @default("EUR")
+  inStock     Boolean
+  recordedAt  DateTime @default(now())
+  @@index([componentId, recordedAt])
+}
+
+model Game {
+  id        String      @id @default(cuid())
+  name      String      @unique
+  slug      String      @unique
+  benchmarks Benchmark[]
+}
+
+model Benchmark {
+  id          String    @id @default(cuid())
+  componentId String
+  gameId      String?
+  resolution  String?
+  quality     String?
+  avgFps      Float?
+  score       Float?
+  // Contexte : moteur, driver, upscaling, RT... + provenance
+  context     Json?
+  source      String    @default("DEMO_SEED")
+  confidence  Confidence @default(LOW)
+  measuredAt  DateTime  @default(now())
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  game        Game?     @relation(fields: [gameId], references: [id])
+  @@index([componentId])
+  @@index([gameId])
+}
+
+model Build {
+  id          String      @id @default(cuid())
+  ownerId     String?
+  title       String
+  slug        String      @unique
+  description String?     @db.Text
+  budget      Decimal?    @db.Decimal(10, 2)
+  goal        String?
+  isPublic    Boolean     @default(false)
+  views       Int         @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  owner       User?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  items       BuildItem[]
+  versions    BuildVersion[]
+  likes       Like[]
+  comments    Comment[]
+  @@index([isPublic, createdAt])
+  @@index([ownerId])
+}
+
+model BuildItem {
+  id          String    @id @default(cuid())
+  buildId     String
+  componentId String
+  category    ComponentCategory
+  qty         Int       @default(1)
+  build       Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  component   Component @relation(fields: [componentId], references: [id])
+  @@index([buildId])
+}
+
+model BuildVersion {
+  id        String   @id @default(cuid())
+  buildId   String
+  snapshot  Json
+  note      String?
+  createdAt DateTime @default(now())
+  build     Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  userId    String
+  buildId   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  build     Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  @@unique([userId, buildId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  userId    String
+  buildId   String
+  body      String   @db.Text
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  build     Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  @@index([buildId, createdAt])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  @@unique([followerId, followingId])
+}
+
+model Badge {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  description String?
+  holders     UserBadge[]
+}
+
+model UserBadge {
+  id        String   @id @default(cuid())
+  userId    String
+  badgeId   String
+  awardedAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  @@unique([userId, badgeId])
+}
+
+model PriceAlert {
+  id          String    @id @default(cuid())
+  userId      String
+  componentId String?
+  buildId     String?
+  targetPrice Decimal   @db.Decimal(10, 2)
+  active      Boolean   @default(true)
+  triggeredAt DateTime?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  component   Component? @relation(fields: [componentId], references: [id], onDelete: SetNull)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String?  @db.Text
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, read, createdAt])
+}
+
+model Report {
+  id        String   @id @default(cuid())
+  reporterId String
+  targetType String
+  targetId   String
+  reason     String   @db.Text
+  status     String   @default("OPEN")
+  createdAt DateTime @default(now())
+  reporter  User     @relation("reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+}
+
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  name      String
+  props     Json?
+  sessionId String?
+  createdAt DateTime @default(now())
+  @@index([name, createdAt])
+}
