@@ -10,13 +10,16 @@ Décris le PC que tu veux et ton budget : le site propose des configurations qui
 - **Vue 3D** à l'échelle, pilotée par les dimensions des pièces : style plan ou rendu réaliste (matières, reflets, ombres, halo des LED), vue éclatée, cotes — `src/components/viewer/`.
 - **Accueil** : une configuration d'exemple s'assemble en 3D à l'ouverture — `src/components/HeroShowcase.tsx`.
 - **Fiche par pièce** avec vue 3D, et une image pour chacune des 198 pièces — `src/app/composants/[id]/`, `public/parts/`.
-- **Liens d'achat** Amazon.fr, avec identifiant d'affiliation facultatif — `src/lib/affiliate.ts`.
+- **Liens d'achat** directs vers la fiche Amazon.fr de 188 pièces sur 198, avec identifiant d'affiliation facultatif — `src/data/amazon.ts`, `src/lib/affiliate.ts`.
+- **Modèles 3D officiels** : un fichier `.glb` déposé dans `public/models/` remplace le rendu générique de la pièce, à l'échelle, partout (configurations, fiches, vignettes). Suivi sur `/atelier/modeles`, mode d'emploi et sources dans `MODELES_3D.md`.
+- **Fiche au survol** dans la 3D : photo (officielle si l'API Amazon est branchée), nom et prix de la pièce survolée.
+- **Prix Amazon en direct et photos officielles** dès que les identifiants de l'API Creators sont dans `.env` — `src/lib/amazon-api.ts`, `AFFILIATE_SYSTEM.md`.
 
 ## Ce qui n'est pas fait
 
-- Les **prix** sont relevés à la main à une date fixe (`PRICE_DATE`). Pas encore de flux automatique.
+- Les **prix** sont relevés à la main à une date fixe (`PRICE_DATE`) tant que l'API Creators d'Amazon n'est pas branchée (il faut 10 ventes sur 30 jours pour y avoir accès).
 - Les **images par seconde** sont des estimations issues d'un modèle simple, pas des mesures.
-- La **3D** et les images sont des rendus **génériques** : bonnes dimensions, bonne couleur, bon nombre de ventilateurs, mais pas le dessin exact ni les logos des produits. Pour de vraies photos, renseigner le champ `photo` d'une pièce avec une image que l'on a le droit d'afficher (voir `DATA_PIPELINE.md`).
+- La **3D** et les images reprennent l'apparence relevée sur chaque produit (`src/data/looks.ts` : couleurs, nombre et place des ventilateurs, éclairage, plaque arrière, tuyaux, écran de pompe, pieds…), mais les formes restent **génériques** : pas le dessin exact ni les logos des produits. Les vraies photos viennent de l'API Creators d'Amazon une fois branchée, ou du champ `photo` d'une pièce (voir `DATA_PIPELINE.md`).
 - Sur 198 fiches, 60 ont été relues sur la documentation du fabricant (`confidence: "VERIFIED"`). Les autres reposent sur des specs publiques (`"KNOWN"`) et restent à relire.
 - Pas de comptes utilisateurs actifs, pas de quiz, d'actualités ni de mini-jeux : à venir.
 
@@ -43,7 +46,7 @@ Puis ouvrir http://localhost:3000.
 
 ## Affiliation Amazon
 
-Dans `.env`, renseigner `NEXT_PUBLIC_AMAZON_TAG="monsite-21"` une fois le compte Partenaires créé. Tant que la variable est vide, les liens sont de simples liens. Voir `AFFILIATE_SYSTEM.md`.
+Dans `.env`, renseigner `NEXT_PUBLIC_AMAZON_TAG="monsite-21"` une fois le compte Partenaires créé. Tant que la variable est vide, les liens sont de simples liens. Ensuite, les identifiants de l'API Creators donnent les prix en direct et les photos. Voir `AFFILIATE_SYSTEM.md`.
 
 ## Où trouver quoi
 

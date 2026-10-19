@@ -1,5 +1,6 @@
 // Éléments d'interface partagés, sans état : utilisables côté serveur comme côté navigateur.
 import PartThumb from "@/components/PartThumb";
+import { PartPrice, TotalPrice } from "@/components/PartPrice";
 import { amazonUrl } from "@/lib/affiliate";
 import { STATUS_LABEL } from "@/lib/compatibility";
 import { fullName } from "@/lib/catalog";
@@ -34,20 +35,22 @@ export function IssueList({ compat }: { compat: CompatibilityResult }) {
   );
 }
 
-export function BuyLink({ part, children = "Voir sur Amazon" }: { part: Component; children?: React.ReactNode }) {
+/** Lien d'achat : la fiche du produit sur Amazon.fr quand on la connaît, sinon une recherche Amazon. */
+export function BuyLink({ part, children }: { part: Component; children?: React.ReactNode }) {
   return (
     <a className="buy" href={amazonUrl(part)} target="_blank" rel="sponsored nofollow noopener noreferrer">
-      {children} <span aria-hidden="true">↗</span>
+      {children ?? (part.asin ? "Voir sur Amazon" : "Chercher sur Amazon")} <span aria-hidden="true">↗</span>
     </a>
   );
 }
 
-export function PartsTable({ build, total }: { build: ResolvedBuild; total: number }) {
+/** `total` n'est plus utilisé (le total se recalcule avec les prix en direct) ; gardé pour compatibilité. */
+export function PartsTable({ build }: { build: ResolvedBuild; total?: number }) {
   return (
     <div className="table-scroll">
       <table className="parts">
         <thead>
-          <tr><th>Pièce</th><th>Référence</th><th className="amount">Prix indicatif</th><th><span className="skip">Achat</span></th></tr>
+          <tr><th>Pièce</th><th>Référence</th><th className="amount">Prix</th><th><span className="skip">Achat</span></th></tr>
         </thead>
         <tbody>
           {CATEGORIES.filter((s) => build[s]).map((s) => {
@@ -56,12 +59,12 @@ export function PartsTable({ build, total }: { build: ResolvedBuild; total: numb
               <tr key={s}>
                 <td className="slot">{CATEGORY_LABEL[s]}</td>
                 <td><span className="part-cell"><PartThumb part={c} className="thumb-sm" /><span><a href={`/composants/${c.id}`}>{fullName(c)}</a><span className="spec" style={{ display: "block" }}>{specLine(c)}</span></span></span></td>
-                <td className="amount num">{formatEUR(c.price)}</td>
+                <td className="amount"><PartPrice part={c} /></td>
                 <td className="amount"><BuyLink part={c} /></td>
               </tr>
             );
           })}
-          <tr className="total"><td className="slot">Total</td><td /><td className="amount num">{formatEUR(total)}</td><td /></tr>
+          <tr className="total"><td className="slot">Total</td><td /><td className="amount"><TotalPrice parts={CATEGORIES.flatMap((s) => (build[s] ? [build[s]!] : []))} /></td><td /></tr>
         </tbody>
       </table>
     </div>

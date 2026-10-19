@@ -28,8 +28,9 @@ const ROWS: Row[] = [
   ["case-corsair-4000d-rs-argb", "Corsair", "Frame 4000D RS ARGB Noir", 98, "black", EATX, 430, 170, 360, 360, 360, 220, 486, 239, 490, "standard", "mesh", 3, true, "VERIFIED"],
   ["case-nzxt-h9-flow-black", "NZXT", "H9 Flow (2025) Noir", 99, "black", EATX, 459, 165, 420, 420, 0, 200, 506, 315, 481, "dual", "glass", 4, false, "KNOWN"],
   ["case-nzxt-h6-flow-white", "NZXT", "H6 Flow Blanc", 100, "white", ATX, 365, 163, 360, 0, 0, 200, 435, 287, 415, "dual", "glass", 3, false, "VERIFIED"],
-  ["case-fractal-north-black", "Fractal Design", "North Mesh Noir", 109, "black", ATX, 355, 145, 240, 360, 0, 255, 469, 215, 447, "standard", "wood", 2, false, "VERIFIED"],
-  ["case-fractal-north-white", "Fractal Design", "North Mesh Blanc", 112, "white", ATX, 355, 145, 240, 360, 0, 255, 469, 215, 447, "standard", "wood", 2, false, "VERIFIED"],
+  // North : 170 mm de hauteur de ventirad, 145 mm seulement si l'on monte le support de ventilateurs latéraux (non fourni).
+  ["case-fractal-north-black", "Fractal Design", "North Mesh Noir", 109, "black", ATX, 355, 170, 240, 360, 0, 255, 469, 215, 447, "standard", "wood", 2, false, "VERIFIED"],
+  ["case-fractal-north-white", "Fractal Design", "North Mesh Blanc", 112, "white", ATX, 355, 170, 240, 360, 0, 255, 469, 215, 447, "standard", "wood", 2, false, "VERIFIED"],
   ["case-nzxt-h9-flow-white", "NZXT", "H9 Flow (2025) Blanc", 118, "white", EATX, 459, 165, 420, 420, 0, 200, 506, 315, 481, "dual", "glass", 4, false, "KNOWN"],
   ["case-corsair-5000d-rs-argb-white", "Corsair", "Frame 5000D RS ARGB Blanc", 143, "white", EATX, 450, 175, 420, 360, 360, 220, 542, 250, 556, "standard", "mesh", 4, true, "VERIFIED"],
   ["case-fractal-north-xl", "Fractal Design", "North XL Mesh Noir", 148, "black", EATX, 413, 185, 360, 420, 0, 290, 509, 240, 503, "standard", "wood", 3, false, "VERIFIED"],

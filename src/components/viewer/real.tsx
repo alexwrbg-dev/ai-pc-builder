@@ -19,7 +19,7 @@ export const TONE: Record<Finish, { paint: string; trim: string; dark: string; p
 
 // ------------------------------------------------------------------ Matières
 
-type Kind = "paint" | "plastic" | "metal" | "brushed" | "rubber" | "copper" | "nickel";
+type Kind = "paint" | "plastic" | "metal" | "brushed" | "rubber" | "copper" | "nickel" | "coated";
 const PRESET: Record<Kind, { metalness: number; roughness: number; env: number }> = {
   paint: { metalness: 0.3, roughness: 0.5, env: 1.1 },
   plastic: { metalness: 0.0, roughness: 0.48, env: 0.7 },
@@ -28,13 +28,26 @@ const PRESET: Record<Kind, { metalness: number; roughness: number; env: number }
   rubber: { metalness: 0.0, roughness: 0.9, env: 0.3 },
   copper: { metalness: 1.0, roughness: 0.22, env: 1.3 },
   nickel: { metalness: 1.0, roughness: 0.18, env: 1.3 },
+  /** Revêtement noir mat des ailettes et caloducs : ne reflète presque rien. */
+  coated: { metalness: 0.15, roughness: 0.72, env: 0.45 },
 };
+
+/**
+ * Les blancs relevés sur les produits (#e8eaed…) brûlent sous l'éclairage de studio : on les ramène
+ * à un blanc légèrement grisé, comme sur une photo bien exposée.
+ */
+function exposed(color: string): THREE.Color {
+  const c = new THREE.Color(color);
+  const lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+  return lum > 0.72 ? c.multiplyScalar(0.72 / lum + (lum - 0.72) * 0.5) : c;
+}
 
 export function M({ kind = "paint", color, map, opacity = 1 }: { kind?: Kind; color: string; map?: THREE.Texture | null; opacity?: number }) {
   const p = PRESET[kind];
+  const tone = useMemo(() => exposed(color), [color]);
   return (
     <meshStandardMaterial
-      color={color} map={map ?? null} metalness={p.metalness} roughness={p.roughness} envMapIntensity={p.env}
+      color={tone} map={map ?? null} metalness={p.metalness} roughness={p.roughness} envMapIntensity={p.env}
       transparent={opacity < 1} opacity={opacity}
     />
   );
@@ -78,35 +91,36 @@ function canvasTexture(key: string, size: number, draw: (ctx: CanvasRenderingCon
   return tex;
 }
 
-/** Tôle perforée : trous ronds en quinconce. Sert de masque de transparence. */
-function perforationBase(): THREE.Texture {
-  return canvasTexture("perf", 64, (ctx, s) => {
+/** Tôle perforée : trous ronds en quinconce. Sert de masque de transparence. `hole` : rayon relatif des trous. */
+function perforationBase(hole = 0.2): THREE.Texture {
+  return canvasTexture(`perf-${hole}`, 64, (ctx, s) => {
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, s, s);
     ctx.fillStyle = "#000";
     for (const [x, y] of [[0, 0], [s, 0], [0, s], [s, s], [s / 2, s / 2]]) {
       ctx.beginPath();
-      ctx.arc(x, y, s * 0.2, 0, Math.PI * 2);
+      ctx.arc(x, y, s * hole, 0, Math.PI * 2);
       ctx.fill();
     }
   });
 }
 
 /** Une copie du masque, répétée selon la taille du panneau (un motif tous les `pitch` millimètres). */
-export function usePerforation(w: number, h: number, pitch = 5): THREE.Texture {
+export function usePerforation(w: number, h: number, pitch = 5, hole = 0.2): THREE.Texture {
   return useMemo(() => {
-    const t = perforationBase().clone();
+    const t = perforationBase(hole).clone();
     t.repeat.set(Math.max(1, Math.round(w / pitch)), Math.max(1, Math.round(h / pitch)));
     t.colorSpace = THREE.NoColorSpace;
     t.needsUpdate = true;
     return t;
-  }, [w, h, pitch]);
+  }, [w, h, pitch, hole]);
 }
 
 /** Circuit imprimé : pistes fines et pastilles, à peine visibles. */
-export function usePcb(white: boolean): THREE.Texture {
-  return useMemo(() => canvasTexture(white ? "pcb-w" : "pcb-b", 512, (ctx, s) => {
-    ctx.fillStyle = white ? "#dfe3e8" : "#0f1114";
+export function usePcb(base: string): THREE.Texture {
+  const white = parseInt(base.slice(1, 3), 16) > 150;
+  return useMemo(() => canvasTexture(`pcb-${base}`, 512, (ctx, s) => {
+    ctx.fillStyle = base;
     ctx.fillRect(0, 0, s, s);
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
@@ -131,7 +145,7 @@ export function usePcb(white: boolean): THREE.Texture {
       ctx.arc(rnd() * s, rnd() * s, 1.6, 0, Math.PI * 2);
       ctx.fill();
     }
-  }), [white]);
+  }), [base, white]);
 }
 
 /** Faisceau d'un radiateur : fines ailettes serrées. */
@@ -185,19 +199,25 @@ export function Rod({ at, r, len, axis = "z", children, segments = 24 }: { at: V
 }
 
 /** Panneau de tôle perforée (grille de boîtier, filtre). */
-export function Mesh({ at, size, normal, color, pitch = 5 }: { at: Vec3; size: [number, number]; normal: "x" | "y" | "z"; color: string; pitch?: number }) {
-  const alpha = usePerforation(size[0], size[1], pitch);
+export function Mesh({ at, size, normal, color, pitch = 5, open = false }: { at: Vec3; size: [number, number]; normal: "x" | "y" | "z"; color: string; pitch?: number; open?: boolean }) {
+  // `open` : grille très ajourée, assez transparente pour voir la configuration à travers un flanc grillagé.
+  const alpha = usePerforation(size[0], size[1], pitch, open ? 0.34 : 0.2);
   const rotation: Vec3 = normal === "x" ? [0, Math.PI / 2, 0] : normal === "y" ? [-Math.PI / 2, 0, 0] : [0, 0, 0];
   return (
     <mesh position={at} rotation={rotation} receiveShadow>
       <planeGeometry args={size} />
-      <meshStandardMaterial color={color} alphaMap={alpha} alphaTest={0.5} metalness={0.6} roughness={0.5} side={THREE.DoubleSide} />
+      {open
+        ? <meshStandardMaterial color={color} alphaMap={alpha} transparent opacity={0.5} depthWrite={false} metalness={0.5} roughness={0.5} side={THREE.DoubleSide} />
+        : <meshStandardMaterial color={color} alphaMap={alpha} alphaTest={0.5} metalness={0.6} roughness={0.5} side={THREE.DoubleSide} />}
     </mesh>
   );
 }
 
 /** Rangée d'ailettes identiques, dessinée en une seule passe. */
-export function Fins({ count, start, step, size, color, kind = "brushed" }: { count: number; start: Vec3; step: Vec3; size: Vec3; color: string; kind?: Kind }) {
+export function Fins({ count, start, step, size, color, kind: wanted = "brushed" }: { count: number; start: Vec3; step: Vec3; size: Vec3; color: string; kind?: Kind }) {
+  // Des ailettes noires sont revêtues (peinture) : elles ne doivent pas refléter le ciel comme de l'aluminium nu.
+  const kind: Kind = parseInt(color.slice(1, 3), 16) < 80 && wanted === "brushed" ? "coated" : wanted;
+  const tone = useMemo(() => exposed(color), [color]);
   const ref = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     const m = new THREE.Matrix4();
@@ -211,7 +231,7 @@ export function Fins({ count, start, step, size, color, kind = "brushed" }: { co
   return (
     <instancedMesh key={count} ref={ref} args={[undefined, undefined, count]} castShadow receiveShadow>
       <boxGeometry args={size} />
-      <meshStandardMaterial color={color} metalness={p.metalness} roughness={p.roughness} envMapIntensity={p.env} />
+      <meshStandardMaterial color={tone} metalness={p.metalness} roughness={p.roughness} envMapIntensity={p.env} />
     </instancedMesh>
   );
 }
@@ -286,8 +306,12 @@ function bladeGeometry(R: number): THREE.BufferGeometry {
  * Ventilateur complet. `axis` est la direction du flux ; `frameless` retire le cadre carré
  * (ventilateurs de carte graphique, logés dans un carénage).
  */
-export function RealFan({ at, size = 120, axis, rgb = false, finish = "black", depth = 25, frameless = false, speed = 6 }: {
+export function RealFan({ at, size = 120, axis, rgb = false, finish = "black", depth = 25, frameless = false, speed = 6, blade: bladeLook, frameColor }: {
   at: Vec3; size?: number; axis: "x" | "y" | "z" | "-y"; rgb?: boolean; finish?: Finish; depth?: number; frameless?: boolean; speed?: number;
+  /** Teinte des pales relevée sur le produit ; à défaut, déduite de la finition et de l'éclairage. */
+  blade?: "black" | "white" | "translucent" | "gray";
+  /** Couleur du cadre, si elle diffère de la finition. */
+  frameColor?: string;
 }) {
   const look = useContext(LookContext);
   const rotor = useRef<THREE.Group>(null);
@@ -300,19 +324,21 @@ export function RealFan({ at, size = 120, axis, rgb = false, finish = "black", d
   const blade = useMemo(() => bladeGeometry(R), [R]);
   const blades = frameless ? 9 : 7;
   const rotation: Vec3 = axis === "x" ? [0, Math.PI / 2, 0] : axis === "y" ? [-Math.PI / 2, 0, 0] : axis === "-y" ? [Math.PI / 2, 0, 0] : [0, 0, 0];
-  const bladeColor = rgb ? "#dfe3e8" : finish === "white" ? "#d9dce1" : "#17181c";
+  const kind = bladeLook ?? (rgb ? "translucent" : finish === "white" ? "white" : "black");
+  const bladeColor = kind === "translucent" ? (rgb ? "#dfe3e8" : "#8a919c") : kind === "white" ? "#d9dce1" : kind === "gray" ? "#5d626b" : "#17181c";
+  const frameTone = frameColor ?? tone.plastic;
 
   return (
     <group position={at} rotation={rotation}>
       {!frameless && (
         <mesh geometry={frame} castShadow receiveShadow>
-          <M kind="plastic" color={tone.plastic} />
+          <M kind="plastic" color={frameTone} />
         </mesh>
       )}
       {/* Bras du moteur, côté sortie d'air */}
       {!frameless && [0, 1, 2, 3].map((k) => (
         <Box key={k} at={[Math.cos(k * Math.PI / 2 + 0.5) * R * 0.62, Math.sin(k * Math.PI / 2 + 0.5) * R * 0.62, -depth / 2 + 2]} size={[R * 0.82, 3.2, 3]} rotation={[0, 0, k * Math.PI / 2 + 0.5]} shadow={false}>
-          <M kind="plastic" color={tone.plastic} />
+          <M kind="plastic" color={frameTone} />
         </Box>
       ))}
       {rgb && (
@@ -332,8 +358,10 @@ export function RealFan({ at, size = 120, axis, rgb = false, finish = "black", d
           <group key={k} rotation={[0, 0, (k / blades) * Math.PI * 2]}>
             <mesh geometry={blade} rotation={[0.38, 0, 0]} castShadow>
               {rgb
-                ? <meshStandardMaterial color={bladeColor} transparent opacity={0.78} roughness={0.25} metalness={0} emissive={look.accent} emissiveIntensity={look.quality === "high" ? 2.6 : 0.9} />
-                : <M kind="plastic" color={bladeColor} />}
+                ? <meshStandardMaterial color={bladeColor} transparent opacity={kind === "translucent" ? 0.78 : 1} roughness={0.25} metalness={0} emissive={look.accent} emissiveIntensity={(look.quality === "high" ? 2.6 : 0.9) * (kind === "translucent" ? 1 : 0.35)} />
+                : kind === "translucent"
+                  ? <meshStandardMaterial color={bladeColor} transparent opacity={0.6} roughness={0.2} metalness={0} />
+                  : <M kind="plastic" color={bladeColor} />}
             </mesh>
           </group>
         ))}

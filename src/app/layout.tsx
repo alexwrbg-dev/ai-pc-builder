@@ -1,3 +1,4 @@
+import Backdrop from "@/components/Backdrop";
 import type { Metadata } from "next";
 import "@fontsource/barlow-condensed/600.css";
 import "@fontsource/barlow-condensed/700.css";
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         {/* Sans JavaScript, les blocs animés au défilement restent visibles. */}
         <noscript><style>{".reveal{opacity:1;transform:none}"}</style></noscript>
+        <Backdrop />
         <a href="#main" className="skip">Aller au contenu</a>
         <header className="topbar">
           <nav className="wrap nav" aria-label="Navigation principale">

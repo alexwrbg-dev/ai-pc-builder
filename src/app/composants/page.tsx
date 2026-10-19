@@ -1,3 +1,4 @@
+import { PartPrice } from "@/components/PartPrice";
 import PartThumb from "@/components/PartThumb";
 import { PRICE_DATE, byCategory, fullName } from "@/lib/catalog";
 import { specLine } from "@/lib/describe";
@@ -31,7 +32,7 @@ export default function Page({ searchParams }: { searchParams: { c?: string } })
             <span className="name">{fullName(c)}</span>
             <span className="spec small muted">{specLine(c)}</span>
             <span className="row">
-              <span className="num">{formatEUR(c.price)}</span>
+              <PartPrice part={c} />
               {c.confidence === "VERIFIED" ? <span className="pill pill-ok">relue</span> : <span className="pill pill-plain">specs publiques</span>}
             </span>
           </a>
@@ -39,7 +40,7 @@ export default function Page({ searchParams }: { searchParams: { c?: string } })
       </div>
       <p className="small muted" style={{ marginTop: 14, maxWidth: "80ch" }}>
         « Relue » : dimensions et connecteurs vérifiés sur la documentation du fabricant ou d&apos;un revendeur.
-        « Specs publiques » : caractéristiques connues, pas encore relues une par une. Les images sont des rendus 3D génériques, pas des photos des produits.
+        « Specs publiques » : caractéristiques connues, pas encore relues une par une. Les images sont nos rendus 3D (couleurs, ventilateurs et éclairage relevés sur chaque produit), pas des photos.
       </p>
     </>
   );

@@ -1,11 +1,18 @@
-// Image d'une pièce : la photo officielle si elle est renseignée, sinon notre rendu 3D (planche par catégorie).
+"use client";
+// Image d'une pièce, dans cet ordre : photo officielle fournie par l'API Amazon (si elle est branchée),
+// photo renseignée dans le catalogue, sinon notre rendu 3D (planche d'images par catégorie).
 import { THUMBS, THUMB_COLS, THUMB_ROWS } from "@/data/thumbs";
+import { useLiveOffer } from "@/lib/amazon-client";
 import type { Component } from "@/lib/types";
 
-export default function PartThumb({ part, className = "" }: { part: Pick<Component, "id" | "category" | "brand" | "model" | "photo">; className?: string }) {
-  if (part.photo) {
+type Part = Pick<Component, "id" | "category" | "brand" | "model" | "photo" | "asin">;
+
+export default function PartThumb({ part, className = "" }: { part: Part; className?: string }) {
+  const live = useLiveOffer(part.id, Boolean(part.asin));
+  const photo = live?.image ?? part.photo;
+  if (photo) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img className={`thumb ${className}`} src={part.photo} alt={`${part.brand} ${part.model}`} loading="lazy" />;
+    return <img className={`thumb thumb-photo ${className}`} src={photo} alt={`${part.brand} ${part.model}`} loading="lazy" />;
   }
   const cell = THUMBS[part.id];
   const rows = THUMB_ROWS[part.category] ?? 1;

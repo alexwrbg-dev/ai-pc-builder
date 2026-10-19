@@ -1,0 +1,19 @@
+Modèles 3D officiels des pièces
+================================
+
+Dépose ici un fichier .glb par pièce, nommé avec l'identifiant de la pièce :
+  gpu-msi-5070ti-gaming-trio.glb
+L'identifiant est la fin de l'adresse de la fiche : http://localhost:3000/composants/gpu-msi-5070ti-gaming-trio
+
+Watercooling : <id>.glb pour le bloc pompe, <id>-radiateur.glb pour le radiateur (avec ses ventilateurs).
+
+Le site les détecte au prochain "npm run dev" ou "npm run build", les met à l'échelle exacte de la pièce
+et les place dans la configuration à la place du rendu générique.
+
+Vérifier : http://localhost:3000/atelier/modeles
+Si un modèle est tourné dans le mauvais sens, ajouter dans reglages.json (dans ce dossier) :
+  { "gpu-msi-5070ti-gaming-trio": { "rotation": [0, 90, 0] } }
+(angles en degrés autour des axes x, y, z ; "rotationRadiateur" pour le radiateur d'un watercooling)
+
+IMPORTANT : n'utiliser que des modèles que l'on a le droit d'afficher sur un site commercial
+(accord écrit de la marque, ou licence qui l'autorise). Voir MODELES_3D.md à la racine du projet.

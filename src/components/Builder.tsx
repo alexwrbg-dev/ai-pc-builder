@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import BuildViewer from "@/components/BuildViewer";
 import Money from "@/components/Money";
+import { PartPrice } from "@/components/PartPrice";
+import { useLiveTotal } from "@/lib/amazon-client";
 import PartThumb from "@/components/PartThumb";
 import { BudgetMeter, BuyLink, FpsBars, IssueList, StatusPill } from "@/components/ui";
 import { PRICE_DATE, byCategory, decodeSelection, encodeSelection, fullName, resolveBuild } from "@/lib/catalog";
@@ -62,7 +64,7 @@ function Picker({ slot, sel, onPick, onClose }: { slot: ComponentCategory; sel: 
             <button key={c.id} type="button" className={`option${blocker ? " blocked" : ""}`} aria-pressed={sel[slot] === c.id} onClick={() => onPick(c.id)}>
               <PartThumb part={c} />
               <span>{fullName(c)}</span>
-              <span className="num">{formatEUR(c.price)}</span>
+              <PartPrice part={c} />
               <span className="spec">{specLine(c)}</span>
               {blocker && <span className="why">{blocker}</span>}
             </button>
@@ -96,7 +98,8 @@ export default function Builder() {
 
   const { build, unknown } = useMemo(() => resolveBuild(sel), [sel]);
   const compat = useMemo(() => checkBuild(build, unknown), [build, unknown]);
-  const total = useMemo(() => CATEGORIES.reduce((s, slot) => s + (build[slot]?.price ?? 0), 0), [build]);
+  const chosen = useMemo(() => CATEGORIES.flatMap((slot) => (build[slot] ? [build[slot]!] : [])), [build]);
+  const { total, live: liveCount } = useLiveTotal(chosen);
   const fps = useMemo(() => estimateFps(build, res), [build, res]);
   const budgetN = Number(budget) > 0 ? Number(budget) : null;
 
@@ -131,7 +134,7 @@ export default function Builder() {
                     <span className="label">{CATEGORY_LABEL[slot]}</span>
                     <span className={`name${c ? "" : " empty"}`}>{c ? fullName(c) : "À choisir"}</span>
                   </span>
-                  <span className="amount">{c ? formatEUR(c.price) : "+"}</span>
+                  <span className="amount">{c ? <PartPrice part={c} className="" /> : "+"}</span>
                 </button>
               );
             })}
@@ -139,7 +142,7 @@ export default function Builder() {
         </div>
 
         <div className="sheet stack">
-          <div className="sheet-head" style={{ marginBottom: 0 }}><span className="label">Total indicatif</span><span className="label">relevé le {new Date(PRICE_DATE).toLocaleDateString("fr-FR")}</span></div>
+          <div className="sheet-head" style={{ marginBottom: 0 }}><span className="label">Total</span><span className="label">{liveCount ? `${liveCount} prix Amazon en direct` : `indicatif, relevé le ${new Date(PRICE_DATE).toLocaleDateString("fr-FR")}`}</span></div>
           <Money value={total} className="price price-lg" />
           <label className="stack" style={{ gap: 6 }}>
             <span className="label">Mon budget (facultatif)</span>

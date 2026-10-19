@@ -12,14 +12,16 @@
 
 Ajouter une ligne dans le fichier de la catégorie, puis lancer `npm test` : les tests d'intégrité vérifient les identifiants, les prix et qu'aucune pièce n'est orpheline.
 
+## Apparence des pièces
+
+`src/data/looks.ts` décrit l'apparence de chaque pièce visible (cartes graphiques, refroidissements, boîtiers, mémoire, cartes mères, alimentations) : couleurs, nombre et place des ventilateurs, type de pales, éclairage, plaque arrière, tuyaux, forme de pompe, pieds… Relevé en octobre 2026 sur les pages des fabricants, des revendeurs et des tests ; la source est en commentaire. Pour une nouvelle pièce, ajouter sa ligne (sinon une apparence est déduite de sa finition) : `npm test` signale les fiches manquantes.
+
 ## Images des pièces
 
 Chaque pièce a une image tirée du rendu 3D du site, rangée dans une planche par catégorie (`public/parts/`). Après avoir ajouté ou modifié des pièces, `npm run vignettes` les régénère (voir l'en-tête de `scripts/vignettes.mjs`).
 
 Pour afficher une **photo officielle** à la place, renseigner le champ `photo` de la pièce avec l'adresse de l'image. N'y mettre que des images que l'on a le droit d'afficher : celles fournies par l'API d'un programme d'affiliation, ou un kit presse dont la licence le permet. Les photos copiées sur le site d'une marque ou d'un marchand ne sont pas libres de droits.
 
-## Passer à des prix automatiques
+## Prix automatiques
 
-Le relevé manuel ne tient pas dans le temps. La suite prévue : un flux produits d'un programme d'affiliation, importé par une tâche planifiée. `src/lib/catalog.ts` est le seul point d'accès aux données : c'est lui qu'il faudra brancher.
-
-Les conditions du Programme Partenaires Amazon encadrent l'affichage de leurs prix : n'afficher un prix Amazon que s'il vient de leur API officielle.
+Les prix Amazon en direct passent par l'API Creators (voir `AFFILIATE_SYSTEM.md`) : c'est le seul moyen autorisé d'afficher un prix Amazon. Le site ne lit jamais les pages d'Amazon lui-même. Les prix du catalogue restent le repli et la base de l'optimiseur : les relever de nouveau de temps en temps, et mettre à jour `PRICE_DATE`.

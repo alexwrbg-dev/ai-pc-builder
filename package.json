@@ -15,7 +15,10 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "vignettes": "node scripts/vignettes.mjs"
+    "vignettes": "node scripts/vignettes.mjs",
+    "modeles": "node scripts/modeles.mjs",
+    "predev": "node scripts/modeles.mjs",
+    "prebuild": "node scripts/modeles.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.4.2",

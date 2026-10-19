@@ -40,7 +40,7 @@ Three.js via React Three Fiber, chargée à la demande (`next/dynamic`, sans ren
 
 Deux niveaux de qualité : « haut » (ombres, occlusion ambiante, halo) et « bas » pour les petits écrans et les machines modestes. `?rendu=haut` ou `?rendu=bas` dans l'adresse force le choix.
 
-Aucune image ni modèle externe : textures et formes sont calculées dans le navigateur. Les modèles sont génériques, ils ne copient pas le dessin des produits.
+Aucune image ni modèle externe : textures et formes sont calculées dans le navigateur. Les modèles sont génériques, ils ne copient pas le dessin des produits ; ils lisent l'apparence relevée de chaque pièce dans `src/data/looks.ts` (via `src/lib/looks.ts`, qui déduit une apparence de la finition quand une fiche manque).
 
 ## Données
 
@@ -52,3 +52,11 @@ Prisma et PostgreSQL ne servent aujourd'hui qu'à l'authentification (rôle admi
 
 - Pas de limitation de débit sur `/api/ai/recommend` : à poser avant une mise en ligne.
 - Next 14.2.35 : garder la branche 14.2 à jour (correctifs de sécurité du middleware).
+
+## Modèles 3D officiels
+
+`scripts/modeles.mjs` (lancé avant `dev` et `build`) recense `public/models/*.glb` dans `src/data/models.ts`. `src/components/viewer/official.tsx` charge le fichier, l'oriente (réglage de `public/models/reglages.json`, sinon `src/lib/fit.ts` qui associe ses axes à ceux de l'emplacement d'après les proportions), le met à l'échelle de la boîte de la pièce (`boxesOf` dans `Scene.tsx`) et retombe sur le rendu générique s'il manque ou est illisible.
+
+## Décor
+
+`src/components/Backdrop.tsx` : lueurs, quadrillage et pistes de circuit animés en CSS/SVG, fixés derrière toutes les pages ; coupés si l'utilisateur demande moins d'animations.

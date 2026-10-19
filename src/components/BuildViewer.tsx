@@ -2,6 +2,8 @@
 // Cadre de la vue 3D : barre d'outils, légende de la pièce survolée, chargement différé de la scène.
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
+import PartThumb from "@/components/PartThumb";
+import { PartPrice } from "@/components/PartPrice";
 import { fullName } from "@/lib/catalog";
 import { CATEGORY_LABEL, type CompatibilityIssue, type ComponentCategory, type ResolvedBuild } from "@/lib/types";
 
@@ -76,6 +78,15 @@ export default function BuildViewer({ build, issues = [], tall = false }: { buil
           : <Scene build={build} plan={plan} exploded={exploded} cotes={cotes} accent={accent} hot={hot} flags={flags} quality={quality} onHover={setHot} />}
         {sweep > 0 && <div key={sweep} className="viewer-sweep" aria-hidden="true" />}
         <div className="viewer-corner tl" aria-hidden="true" /><div className="viewer-corner br" aria-hidden="true" />
+        {/* Fiche de la pièce survolée : sa photo officielle quand l'API Amazon est branchée, sinon notre rendu */}
+        {hot && hotPart && (
+          <div key={hotPart.id} className="viewer-card" aria-hidden="true">
+            <PartThumb part={hotPart} className="thumb-card" />
+            <span className="label">{CATEGORY_LABEL[hot]}</span>
+            <strong>{fullName(hotPart)}</strong>
+            <PartPrice part={hotPart} className="num viewer-card-price" />
+          </div>
+        )}
         <div className="viewer-legend" aria-live="polite">
           {hot && hotPart
             ? <><span className="label">{CATEGORY_LABEL[hot]}</span><strong>{fullName(hotPart)}</strong><span>{dimensions(build, hot)}</span></>
@@ -95,7 +106,7 @@ export default function BuildViewer({ build, issues = [], tall = false }: { buil
           ))}
         </div>
       </div>
-      <p className="viewer-note">Rendu 3D à l&apos;échelle d&apos;après les dimensions des fabricants. Les formes sont génériques : ce n&apos;est pas une photo des produits.</p>
+      <p className="viewer-note">Rendu 3D à l&apos;échelle d&apos;après les dimensions des fabricants. Couleurs, ventilateurs et éclairage relevés sur chaque produit ; les formes restent génériques, ce n&apos;est pas une photo.</p>
     </div>
   );
 }

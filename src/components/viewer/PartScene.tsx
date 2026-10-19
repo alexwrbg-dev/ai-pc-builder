@@ -4,24 +4,44 @@ import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Bounds, Center, OrbitControls } from "@react-three/drei";
 import { computeLayout } from "@/lib/layout3d";
+import { boardLook, caseLook, coolerLook, gpuLook, isLight, psuLook, ramLook } from "@/lib/looks";
 import type { Component } from "@/lib/types";
 import { LookContext, type Look } from "./primitives";
-import { RealAirCooler, RealBoard, RealCase, RealCaseFans, RealCpu, RealGlass, RealGpu, RealLiquidCooler, RealPsu, RealRam, RealSsd } from "./partsReal";
-import { BACKDROP, Boundary, Effects, SCALE, Studio } from "./Scene";
+import { RealAirCooler, RealBoard, RealCase, RealCaseFans, RealCpu, RealGlass, RealGpu, RealPsu, RealSsd } from "./partsReal";
+import { BACKDROP, Boundary, Effects, Official, OfficialLiquid, OfficialRam, SCALE, Studio, boxesOf } from "./Scene";
 
 const NO_FLAGS = {};
 
 function Model({ part }: { part: Component }) {
   const L = useMemo(() => computeLayout({ [part.category]: part }), [part]);
   switch (part.category) {
-    case "CASE": return <><RealCase pc={part} L={L} cableColor="#0d0e10" cables={false} /><RealCaseFans pc={part} L={L} /><RealGlass L={L} white={part.finish === "white"} /></>;
-    case "MOTHERBOARD": return <RealBoard mb={part} L={L} />;
-    case "CPU": return <RealCpu L={L} socket={part.specs.socket} />;
-    case "GPU": return <RealGpu gpu={part} L={L} cableColor="#0d0e10" cable={false} />;
-    case "RAM": return <RealRam ram={part} L={L} />;
-    case "SSD": return <RealSsd L={L} />;
-    case "PSU": return <RealPsu psu={part} L={L} />;
-    case "COOLER": return L.cooler?.kind === "AIR" ? <RealAirCooler cooler={part} L={L} /> : <RealLiquidCooler cooler={part} L={L} />;
+    case "CASE": return (
+      <Official id={part.id} box={boxesOf(L, "CASE")[0]}>
+        <RealCase pc={part} L={L} cableColor="#0d0e10" cables={false} /><RealCaseFans pc={part} L={L} /><RealGlass L={L} pc={part} />
+      </Official>
+    );
+    case "MOTHERBOARD": return <Official id={part.id} box={boxesOf(L, "MOTHERBOARD")[0]}><RealBoard mb={part} L={L} /></Official>;
+    case "CPU": return <Official id={part.id} box={boxesOf(L, "CPU")[0]}><RealCpu L={L} socket={part.specs.socket} /></Official>;
+    case "GPU": return <Official id={part.id} box={L.gpu}><RealGpu gpu={part} L={L} cableColor="#0d0e10" cable={false} /></Official>;
+    case "RAM": return <OfficialRam ram={part} L={L} />;
+    case "SSD": return <Official id={part.id} box={L.ssd}><RealSsd L={L} /></Official>;
+    case "PSU": return <Official id={part.id} box={L.psu}><RealPsu psu={part} L={L} /></Official>;
+    case "COOLER": return L.cooler?.kind === "AIR"
+      ? <Official id={part.id} box={L.cooler.box}><RealAirCooler cooler={part} L={L} /></Official>
+      : <OfficialLiquid cooler={part} L={L} />;
+  }
+}
+
+/** Couleur dominante de la pièce : une pièce blanche demande moins de lumière de face pour ne pas « brûler ». */
+function mainColor(part: Component): string {
+  switch (part.category) {
+    case "GPU": return gpuLook(part).body;
+    case "COOLER": return coolerLook(part).fanColor;
+    case "CASE": return caseLook(part).color;
+    case "RAM": return ramLook(part).spreader;
+    case "MOTHERBOARD": return boardLook(part).pcb;
+    case "PSU": return psuLook(part).color;
+    default: return "#202329";
   }
 }
 
@@ -57,6 +77,7 @@ export default function PartScene({ part, quality = "high", still = false, accen
   part: Component; quality?: Look["quality"]; still?: boolean; accent?: string; onReady?: () => void;
 }) {
   const look = useMemo<Look>(() => ({ plan: false, accent, hot: null, flags: NO_FLAGS, quality }), [accent, quality]);
+  const front = isLight(mainColor(part)) ? 0.45 : 1;
   return (
     <Boundary>
       <Canvas
@@ -68,8 +89,8 @@ export default function PartScene({ part, quality = "high", still = false, accen
         <LookContext.Provider value={look}>
           <Studio quality={quality} />
           {/* Éclairage de présentation : une pièce noire sur fond sombre a besoin de lumière de face */}
-          <directionalLight position={[-4, 5, 6]} intensity={2.6} />
-          <directionalLight position={[2, 1.5, 6]} intensity={2.2} />
+          <directionalLight position={[-4, 5, 6]} intensity={2.6 * front} />
+          <directionalLight position={[2, 1.5, 6]} intensity={2.2 * front} />
           {/* La clé force un nouveau cadrage quand la pièce change */}
           <Bounds key={part.id} fit clip observe margin={margin(part) * (still ? 1 : 1.12)}>
             <Center top>

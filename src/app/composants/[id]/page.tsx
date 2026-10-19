@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import PartViewer from "@/components/PartViewer";
+import PartPhoto from "@/components/PartPhoto";
+import { PriceBox } from "@/components/PartPrice";
 import { BuyLink } from "@/components/ui";
 import { CATALOG, PRICE_DATE, byId, encodeSelection, fullName } from "@/lib/catalog";
 import { specLine, specRows } from "@/lib/describe";
@@ -26,22 +27,14 @@ export default function Page({ params }: { params: { id: string } }) {
         <p className="lede">{specLine(c)}</p>
       </div>
       <div className="part-page">
-        {c.photo
-          // eslint-disable-next-line @next/next/no-img-element
-          ? <img className="part-photo" src={c.photo} alt={fullName(c)} />
-          : <PartViewer id={c.id} />}
+        <PartPhoto id={c.id} asin={c.asin} photo={c.photo} alt={fullName(c)} />
         <div className="stack">
           <div className="sheet stack">
-            <div className="sheet-head" style={{ marginBottom: 0 }}>
-              <span className="label">Prix indicatif</span>
-              <span className="label">relevé le {new Date(PRICE_DATE).toLocaleDateString("fr-FR")}</span>
-            </div>
-            <span className="price price-lg">{formatEUR(c.price)}</span>
+            <PriceBox part={c} priceDate={PRICE_DATE} />
             <div className="chips">
               <a className="btn" href={`/builder?c=${encodeURIComponent(encodeSelection({ [c.category]: c.id }))}`}>Partir de cette pièce <span className="arrow" aria-hidden="true">→</span></a>
               <BuyLink part={c} />
             </div>
-            <span className="small muted">Le prix affiché chez le marchand fait foi.</span>
           </div>
           <div className="sheet">
             <div className="sheet-head">

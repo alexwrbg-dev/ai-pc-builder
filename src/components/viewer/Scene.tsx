@@ -7,10 +7,11 @@ import { Bloom, EffectComposer, N8AO, ToneMapping } from "@react-three/postproce
 import { ToneMappingMode } from "postprocessing";
 import * as THREE from "three";
 import { computeLayout, type Box as LBox, type Layout } from "@/lib/layout3d";
-import type { ComponentCategory, ResolvedBuild } from "@/lib/types";
+import type { ComponentCategory, ComponentOf, ResolvedBuild } from "@/lib/types";
 import { AMBER, Cote, INK, LookContext, Part, RED, SlotContext, type Look } from "./primitives";
 import { AirCooler, Board, CaseFans, CaseShell, Cpu, GlassPanel, Gpu, LiquidCooler, Psu, Ram, Ssd } from "./partsPlan";
 import { RealAirCooler, RealBoard, RealCase, RealCaseFans, RealCpu, RealGlass, RealGpu, RealLiquidCooler, RealPsu, RealRam, RealSsd } from "./partsReal";
+import { OfficialOr, officialModel } from "./official";
 
 export interface SceneProps {
   build: ResolvedBuild;
@@ -75,7 +76,7 @@ function Cage({ boxes }: { boxes: (LBox | null | undefined)[] }) {
   );
 }
 
-function boxesOf(L: Layout, slot: ComponentCategory): (LBox | null)[] {
+export function boxesOf(L: Layout, slot: ComponentCategory): (LBox | null)[] {
   switch (slot) {
     case "GPU": return [L.gpu];
     case "PSU": return [L.psu];
@@ -90,6 +91,33 @@ function boxesOf(L: Layout, slot: ComponentCategory): (LBox | null)[] {
     case "CPU": return [{ center: [L.cpu.x, L.cpu.y, L.surfaceZ + 8], size: [44, 44, 8] }];
     case "CASE": return [{ center: [0, L.feet + (L.dims.h - L.feet) / 2, 0], size: [L.dims.d, L.dims.h - L.feet, L.dims.w] }];
   }
+}
+
+/** Pièce avec modèle officiel s'il existe, sinon son rendu générique (enfants). */
+export function Official({ id, box, children }: { id: string; box: LBox | null | undefined; children: ReactNode }) {
+  const m = officialModel(id);
+  return <OfficialOr url={m?.file} rotation={m?.rotation} box={box} fallback={children} />;
+}
+
+/** Mémoire : le modèle officiel représente une barrette, posée dans chaque emplacement occupé. */
+export function OfficialRam({ ram, L }: { ram: ComponentOf<"RAM">; L: Layout }) {
+  const m = officialModel(ram.id);
+  if (!m?.file) return <RealRam ram={ram} L={L} />;
+  return <>{L.ram.map((b, i) => <OfficialOr key={i} url={m.file} rotation={m.rotation} box={b} fallback={i === 0 ? <RealRam ram={ram} L={L} /> : null} />)}</>;
+}
+
+/** Watercooling : bloc pompe et radiateur ont chacun leur fichier ; ce qui manque garde le rendu générique. */
+export function OfficialLiquid({ cooler, L }: { cooler: ComponentOf<"COOLER">; L: Layout }) {
+  const m = officialModel(cooler.id);
+  const c = L.cooler;
+  if (!m || !c || c.kind !== "AIO") return <RealLiquidCooler cooler={cooler} L={L} />;
+  return (
+    <>
+      <RealLiquidCooler cooler={cooler} L={L} hidePump={Boolean(m.file)} hideRadiator={Boolean(m.radiator)} />
+      {m.file && <OfficialOr url={m.file} rotation={m.rotation} box={{ center: c.pump, size: [74, 74, 48] }} fallback={null} />}
+      {m.radiator && <OfficialOr url={m.radiator} rotation={m.radiatorRotation} box={{ center: c.radiator.center, size: [c.radiator.size[0] + (c.mount === "front" ? 25 : 0), c.radiator.size[1] + (c.mount === "top" ? 25 : 0), c.radiator.size[2] + (c.mount === "side" ? 25 : 0)] }} fallback={null} />}
+    </>
+  );
 }
 
 function Contents({ build, plan, exploded, cotes, accent, hot, flags, quality, onHover, target }: SceneProps & { target: THREE.Vector3 }) {
@@ -110,55 +138,56 @@ function Contents({ build, plan, exploded, cotes, accent, hot, flags, quality, o
         <Part key={`case-${build.CASE?.id}`} slot="CASE" away={[0, -70, 0]} delay={0} {...part} exploded={false}>
           {plan || !build.CASE
             ? <><CaseShell pc={build.CASE} L={L} />{build.CASE && <CaseFans pc={build.CASE} L={L} />}</>
-            : <><RealCase pc={build.CASE} L={L} cableColor={cable} cables={Boolean(build.MOTHERBOARD && build.PSU)} /><RealCaseFans pc={build.CASE} L={L} /></>}
+            : <OfficialOr url={officialModel(build.CASE.id)?.file} rotation={officialModel(build.CASE.id)?.rotation} box={boxesOf(L, "CASE")[0]}
+                fallback={<><RealCase pc={build.CASE} L={L} cableColor={cable} cables={Boolean(build.MOTHERBOARD && build.PSU)} /><RealCaseFans pc={build.CASE} L={L} /></>} />}
           {build.CASE && <Cage boxes={boxesOf(L, "CASE")} />}
         </Part>
-        {build.CASE && (
+        {build.CASE && !(officialModel(build.CASE.id)?.file && !plan) && (
           <Part key={`glass-${build.CASE.id}`} slot="CASE" away={[0, 0, 560]} delay={0.1} {...part}>
-            {plan ? <GlassPanel L={L} /> : <RealGlass L={L} white={build.CASE.finish === "white"} />}
+            {plan ? <GlassPanel L={L} /> : <RealGlass L={L} pc={build.CASE} />}
           </Part>
         )}
         {build.PSU && L.psu && (
           <Part key={build.PSU.id} slot="PSU" away={[-260, 0, 0]} delay={0.25} {...part}>
-            {plan ? <Psu psu={build.PSU} L={L} /> : <RealPsu psu={build.PSU} L={L} />}
+            {plan ? <Psu psu={build.PSU} L={L} /> : <Official id={build.PSU.id} box={L.psu}><RealPsu psu={build.PSU} L={L} /></Official>}
             <Cage boxes={boxesOf(L, "PSU")} />
           </Part>
         )}
         {build.MOTHERBOARD && (
           <Part key={build.MOTHERBOARD.id} slot="MOTHERBOARD" away={[0, 0, 70]} delay={0.4} {...part}>
-            {plan ? <Board mb={build.MOTHERBOARD} L={L} /> : <RealBoard mb={build.MOTHERBOARD} L={L} />}
+            {plan ? <Board mb={build.MOTHERBOARD} L={L} /> : <Official id={build.MOTHERBOARD.id} box={boxesOf(L, "MOTHERBOARD")[0]}><RealBoard mb={build.MOTHERBOARD} L={L} /></Official>}
             <Cage boxes={boxesOf(L, "MOTHERBOARD")} />
           </Part>
         )}
         {build.CPU && (
           <Part key={build.CPU.id} slot="CPU" away={[0, 0, 160]} delay={0.55} {...part}>
-            {plan ? <Cpu L={L} /> : <RealCpu L={L} socket={build.CPU.specs.socket} />}
+            {plan ? <Cpu L={L} /> : <Official id={build.CPU.id} box={boxesOf(L, "CPU")[0]}><RealCpu L={L} socket={build.CPU.specs.socket} /></Official>}
             <Cage boxes={boxesOf(L, "CPU")} />
           </Part>
         )}
         {build.SSD && L.ssd && (
           <Part key={build.SSD.id} slot="SSD" away={[150, -30, 210]} delay={0.65} {...part}>
-            {plan ? <Ssd L={L} /> : <RealSsd L={L} />}
+            {plan ? <Ssd L={L} /> : <Official id={build.SSD.id} box={L.ssd}><RealSsd L={L} /></Official>}
             <Cage boxes={boxesOf(L, "SSD")} />
           </Part>
         )}
         {build.RAM && L.ram.length > 0 && (
           <Part key={build.RAM.id} slot="RAM" away={[130, 90, 250]} delay={0.75} {...part}>
-            {plan ? <Ram ram={build.RAM} L={L} /> : <RealRam ram={build.RAM} L={L} />}
+            {plan ? <Ram ram={build.RAM} L={L} /> : <OfficialRam ram={build.RAM} L={L} />}
             <Cage boxes={boxesOf(L, "RAM")} />
           </Part>
         )}
         {build.COOLER && L.cooler && (
           <Part key={build.COOLER.id} slot="COOLER" away={[0, 70, 400]} delay={0.9} {...part}>
             {L.cooler.kind === "AIR"
-              ? (plan ? <AirCooler cooler={build.COOLER} L={L} /> : <RealAirCooler cooler={build.COOLER} L={L} />)
-              : (plan ? <LiquidCooler cooler={build.COOLER} L={L} /> : <RealLiquidCooler cooler={build.COOLER} L={L} />)}
+              ? (plan ? <AirCooler cooler={build.COOLER} L={L} /> : <Official id={build.COOLER.id} box={L.cooler.box}><RealAirCooler cooler={build.COOLER} L={L} /></Official>)
+              : (plan ? <LiquidCooler cooler={build.COOLER} L={L} /> : <OfficialLiquid cooler={build.COOLER} L={L} />)}
             <Cage boxes={boxesOf(L, "COOLER")} />
           </Part>
         )}
         {build.GPU && L.gpu && (
           <Part key={build.GPU.id} slot="GPU" away={[0, -150, 300]} delay={1.05} {...part}>
-            {plan ? <Gpu gpu={build.GPU} L={L} /> : <RealGpu gpu={build.GPU} L={L} cableColor={cable} cable={Boolean(build.PSU)} />}
+            {plan ? <Gpu gpu={build.GPU} L={L} /> : <Official id={build.GPU.id} box={L.gpu}><RealGpu gpu={build.GPU} L={L} cableColor={cable} cable={Boolean(build.PSU)} /></Official>}
             <Cage boxes={boxesOf(L, "GPU")} />
           </Part>
         )}

@@ -4,6 +4,7 @@
 // Repère : x = profondeur (arrière négatif, avant positif), y = hauteur (sol à 0),
 // z = largeur (panneau vitré côté positif, plateau de carte mère côté négatif).
 import type { FormFactor, ResolvedBuild } from "./types";
+import { caseLook, coolerLook } from "./looks";
 
 export type Vec3 = [number, number, number];
 export interface Box {
@@ -57,7 +58,9 @@ export function computeLayout(build: ResolvedBuild): Layout {
   const maxCooler = cs?.maxCoolerHeightMM ?? DEFAULT_CASE.maxCooler;
   const maxGpu = cs?.maxGpuLengthMM ?? DEFAULT_CASE.maxGpu;
   const dual = cs?.layout === "dual";
-  const feet = 14;
+  // Hauteur sous le plancher : patins (14 mm), hauts pieds (28 mm) ou rails (10 mm).
+  const feetKind = build.CASE ? caseLook(build.CASE).feet : "low";
+  const feet = feetKind === "tall" ? 28 : feetKind === "rails" ? 10 : 14;
 
   // Le plateau est placé pour que la hauteur libre au-dessus du processeur soit celle annoncée par le fabricant.
   const panelZ = W / 2 - 5;
@@ -108,12 +111,14 @@ export function computeLayout(build: ResolvedBuild): Layout {
     const c = build.COOLER.specs;
     if (c.kind === "AIR") {
       const height = c.heightMM ?? 155;
-      const towers = c.fans >= 2 ? 2 : 1;
+      // Nombre de tours relevé sur le produit ; un second ventilateur sur une seule tour l'élargit vers l'arrière.
+      const towers = coolerLook(build.COOLER).towers === 2 ? 2 : 1;
+      const width = towers === 2 ? 136 : 78 + (c.fans >= 2 ? 26 : 0);
       cooler = {
         kind: "AIR",
         towers,
         maxTopZ: surfaceZ + 8 + maxCooler,
-        box: { center: [cpu.x, cpu.y, surfaceZ + 8 + height / 2], size: [towers === 2 ? 136 : 78, 126, height] },
+        box: { center: [cpu.x, cpu.y, surfaceZ + 8 + height / 2], size: [width, 126, height] },
       };
     } else {
       const rad = c.radiatorMM ?? 240;
